@@ -6,6 +6,19 @@ from player import Player
 class AIPlayer(Player):
     def __init__(self, name):
         super().__init__(name)  # kör Player sin __init__ så vi får name och hand
+        self.seen_cards = []    # kort han vet redan är spelade
+
+    def remember(self, card):
+        self.seen_cards.append(card)
+
+    def forget_all(self):
+        self.seen_cards = []  # ny omgång, ny lek
+
+    def has_seen(self, suit, value):
+        for card in self.seen_cards:
+            if card.suit == suit and card.value == value:
+                return True
+        return False
 
     def valid_cards(self, top):
         # positionerna för alla kort i handen som får läggas på top
@@ -63,13 +76,18 @@ class AIPlayer(Player):
         if self.has_card(claim.suit, claim.value):
             return True
 
+        # har kortet redan spelats kan det inte ligga där igen
+        if self.has_seen(claim.suit, claim.value):
+            return True
+
         # om människan la sitt sista kort måste han säga bluffstopp, annars förlorar han
         if human_cards_left == 0:
             return True
 
         chance = 0.2
-        if human_cards_left <= 2:
-            chance = chance + 0.3  # människan är nära att vinna
+        # människan är nära att vinna. men ett lågt kort (2-7) är oftast ärligt, så då litar han på det
+        if human_cards_left <= 2 and claim.rank() > 7:
+            chance = chance + 0.3
 
         if len(self.valid_cards(claim)) == 0:
             chance = chance + 0.15  # han kan ändå inte lägga något

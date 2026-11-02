@@ -22,8 +22,9 @@ class Game:
         self.ai.hand = []
         self.human.take_cards(self.deck.deal(6))
         self.ai.take_cards(self.deck.deal(6))
+        self.ai.forget_all()  # datorn glömmer korten från förra omgången
 
-        self.claim = None        # kortet man SÄGER att man la
+        self.claim = None       # kortet man SÄGER att man la
         self.last_card = None    # kortet som faktiskt ligger där
         self.last_player = None  # den som la senaste kortet
         self.bluff_called = False    # man får bara säga bluffstopp en gång per tur
@@ -74,6 +75,7 @@ class Game:
         self.last_card = cards[0]
         self.claim = cards[0]  # alla vet vilket kort det är, så det är ingen bluff
         self.last_player = None
+        self.ai.remember(cards[0])
         return f"Från leken läggs {cards[0]} på bordet."
 
     def new_sequence(self, starter):
@@ -91,6 +93,8 @@ class Game:
             return False
 
         self.last_card = self.current.remove_card(index)
+        if self.current == self.ai:
+            self.ai.remember(self.last_card)  # datorn vet vilka kort han själv har lagt
         self.claim = claimed_card
         self.last_player = self.current
         self.next_turn()
@@ -127,6 +131,7 @@ class Game:
         caller = self.current        # den som säger bluffstopp
         laid_by = self.last_player   # den som la kortet
         self.bluff_called = True
+        self.ai.remember(self.last_card)  # kortet vänds upp, så nu har datorn sett det
 
         text = f"{caller.name} säger bluffstopp! {laid_by.name} sa {self.claim} och kortet var {self.last_card}. "
 
