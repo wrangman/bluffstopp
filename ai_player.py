@@ -2,106 +2,255 @@ import random
 from card import Card, card_ranks
 from player import Player
 
+suits = ["♠", "♥", "♣", "♦"]
+
 
 class AIPlayer(Player):
-    def __init__(self, name):
-        super().__init__(name)  # kör Player sin __init__ så vi får name och hand
-        self.seen_cards = []    # kort han vet redan är spelade
+   def __init__(self, name):
+      super().__init__(name)  # kör Player sin __init__ så vi får name och hand
+      self.seen_cards = []    # kort han vet redan är spelade
+      self.claimed_cards = [] # kort människan har sagt utan att han sa bluffstopp
 
-    def remember(self, card):
-        self.seen_cards.append(card)
+   # ---------- minnet ----------
 
-    def forget_all(self):
-        self.seen_cards = []  # ny omgång, ny lek
+   def remember(self, card):
+      self.seen_cards.append(card)
+      self.forget_some()
 
-    def has_seen(self, suit, value):
-        for card in self.seen_cards:
-            if card.suit == suit and card.value == value:
-                return True
-        return False
+   def remember_claim(self, card):
+      self.claimed_cards.append(card)
+      self.forget_some()
 
-    def valid_cards(self, top):
-        # positionerna för alla kort i handen som får läggas på top
-        valid = []
-        for i in range(len(self.hand)):
-            if self.hand[i].can_follow(top):
-                valid.append(i)
-        return valid
+   def forget_some(self):
+      # med fler än 10 kort i minnet glömmer han 1-3 slumpade, annars blir han för svår att lura
+      if len(self.seen_cards) + len(self.claimed_cards) <= 10:
+         return
 
-    def choose_move(self, top):
-        # ger tillbaka (position, kortet han säger) eller None om han säger pass
+      for i in range(random.randint(1, 3)):
+         total = len(self.seen_cards) + len(self.claimed_cards)
+         r = random.randint(0, total - 1)
+         if r < len(self.seen_cards):
+            self.seen_cards.pop(r)
+         else:
+            self.claimed_cards.pop(r - len(self.seen_cards))
 
-        # ny sekvens: lägg lägsta kortet, ärligt
-        if top is None:
-            index = self.lowest_card_index()
-            return (index, self.hand[index])
+   def forget_all(self):
+      self.seen_cards = []  # ny omgång, ny lek
+      self.claimed_cards = []
 
-        # har han ett kort som passar lägger han det lägsta av dem, ärligt
-        valid = self.valid_cards(top)
-        if len(valid) > 0:
-            lowest = valid[0]
-            for i in valid:
-                if self.hand[i].rank() < self.hand[lowest].rank():
-                    lowest = i
-            return (lowest, self.hand[lowest])
-
-        # inget kort passar. han vill inte dra kort så han bluffar oftast
-        if random.random() < 0.8:
-            index = self.lowest_card_index()
-            return (index, self.make_bluff(top))
-
-        return None
-
-    def make_bluff(self, top):
-        # hittar på ett kort som låter rimligt att lägga på top
-        suits = ["♠", "♥", "♣", "♦"]
-        options = []
-
-        # alternativ 1: samma färg, ett steg högre (går inte på ess)
-        for value in card_ranks:
-            if card_ranks[value] == top.rank() + 1:
-                options.append(Card(top.suit, value))
-
-        # alternativ 2: samma valör, annan färg
-        other_suits = []
-        for suit in suits:
-            if suit != top.suit:
-                other_suits.append(suit)
-        options.append(Card(random.choice(other_suits), top.value))
-
-        return random.choice(options)
-
-    def wants_to_call_bluff(self, claim, human_cards_left):
-        # har han själv kortet vet han att det är bluff
-        if self.has_card(claim.suit, claim.value):
+   def has_seen(self, suit, value):
+      for card in self.seen_cards:
+         if card.suit == suit and card.value == value:
             return True
+      return False
 
-        # har kortet redan spelats kan det inte ligga där igen
-        if self.has_seen(claim.suit, claim.value):
+   def has_claimed(self, suit, value):
+      for card in self.claimed_cards:
+         if card.suit == suit and card.value == value:
             return True
+      return False
 
-        # om människan la sitt sista kort måste han säga bluffstopp, annars förlorar han
-        if human_cards_left == 0:
+   def is_known(self, suit, value):
+      # kort han har själv eller vet är spelade. de kan inte finnas hos motståndaren
+      return self.has_card(suit, value) or self.has_seen(suit, value)
+
+   def valid_cards(self, top):
+      # positionerna för alla kort i handen som får läggas på top
+      valid = []
+      for i in range(len(self.hand)):
+         if self.hand[i].can_follow(top):
+            valid.append(i)
+      return valid
+
+   # ---------- välja drag ----------
+
+   def choose_move(self, top, seconds, opponent_cards):
+      # ger tillbaka (position, kortet han säger) eller None om han säger pass
+      # han går igenom alla drag han kan göra, ger varje drag poäng och väljer det bästa.
+      # seconds är hur länge han har tänkt, opponent_cards hur många kort motståndaren har
+      nerves = self.nerves(seconds)
+      best_move = None
+      best_score = None
+
+      if top is not None:  # på tomt bord får man inte passa
+         best_score = self.score_pass(opponent_cards) + self.noise()
+
+      for i in range(len(self.hand)):
+         for claim in self.possible_claims(self.hand[i], top):
+            score = self.score_move(i, claim, top, nerves, opponent_cards) + self.noise()
+            if best_score is None or score > best_score:
+               best_score = score
+               best_move = (i, claim)
+
+      return best_move
+
+   def possible_claims(self, card, top):
+      # allt han kan säga när han lägger card: kortet självt om det passar, och bluffar.
+      # bluffen får vara ett kort han själv har eller ett som redan spelats,
+      # det är upp till motståndaren att komma ihåg det
+      claims = []
+      if card.can_follow(top):
+         claims.append(card)  # ärligt
+
+      for suit in suits:
+         for value in card_ranks:
+            other = Card(suit, value)
+            if other.same_as(card) or not other.can_follow(top):
+               continue
+
+            if top is None:
+               # tomt bord: bluffa bara med ett högre kort än det han lägger
+               if other.rank() > card.rank():
+                  claims.append(other)
+            elif other.suit == top.suit:
+               # samma färg: högst 5 steg upp, annars blir det för misstänkt
+               if other.rank() - top.rank() <= 5:
+                  claims.append(other)
+            else:
+               claims.append(other)  # samma valör i en annan färg
+
+      return claims
+
+   def score_pass(self, opponent_cards):
+      # pass: han drar ett kort och motståndaren får börja om med vilket kort som helst
+      return -1 - self.free_start_value(opponent_cards)
+
+   def score_move(self, index, claim, top, nerves, opponent_cards):
+      # poäng för att lägga kortet på index och säga claim, när top ligger på bordet
+      card = self.hand[index]
+      rest = self.hand[:index] + self.hand[index + 1:]  # handen efter draget
+
+      if len(rest) == 0:
+         score = 10  # han går ut
+      else:
+         score = 1  # ett kort mindre
+         score = score + self.stop_value(claim) * 0.5 * (1 + self.free_start_value(len(rest)))
+         if opponent_cards == 1:
+            score = score + self.stop_value(claim) * 2.5  # kan du inte lägga på kortet kan du inte gå ut
+         score = score + self.dump_value(card, rest)
+         score = score + self.follow_value(claim, rest)
+         if not card.same_as(claim):
+            score = score - self.waste_value(card, top, rest)
+
+      if card.same_as(claim):
+         return score  # ärligt, ingen risk
+
+      # bluff: blir han synad drar han 3 kort och motståndaren får börja om
+      risk = self.call_risk(len(rest), nerves, top is None)
+      caught = 1 - 3 - self.free_start_value(opponent_cards)
+      return (1 - risk) * score + risk * caught
+
+   def free_start_value(self, cards_left):
+      # hur mycket det är värt att få börja om med vilket kort som helst.
+      # har man bara 1 kort kvar går man ut direkt
+      if cards_left <= 1:
+         return 10
+      return 3 / cards_left
+
+   def stop_value(self, claim):
+      # hur svårt det är för motståndaren att lägga på claim. 0 = lätt, 1 = omöjligt
+      # räknar kort som skulle passa och som han inte vet var de är (högst 15, på en tvåa)
+      count = 0
+      for suit in suits:
+         for value in card_ranks:
+            if Card(suit, value).can_follow(claim) and not self.is_known(suit, value):
+               count = count + 1
+      return 1 - count / 15
+
+   def dump_value(self, card, rest):
+      # hur skönt det är att bli av med card. låga kort kan nästan bara läggas på tomt bord,
+      # höga kort kan läggas på många kort och är bra att spara.
+      # ett kort som inte hör ihop med något annat i handen är också svårt att bli av med
+      value = (14 - card.rank()) / 12 * 3
+      if not self.in_series(card, rest):
+         value = value + 0.5
+      return value
+
+   def waste_value(self, card, top, rest):
+      # hur dumt det är att slänga card som bluff i stället för att spara det
+      # högt kort: kan läggas ärligt på många kort senare, ett ess på alla lägre i samma färg
+      value = (card.rank() - 2) / 12 * 4
+      if top is not None and card.can_follow(top):
+         value = value + 2  # kortet passar ju nu, då ska han inte ljuga med det
+      if self.in_series(card, rest):
+         value = value + 0.5  # det hör ihop med andra kort i handen
+      return value
+
+   def in_series(self, card, rest):
+      # har han något annat kort i samma färg eller med samma valör?
+      for other in rest:
+         if other.suit == card.suit or other.value == card.value:
             return True
+      return False
 
-        chance = 0.2
-        # människan är nära att vinna. men ett lågt kort (2-7) är oftast ärligt, så då litar han på det
-        if human_cards_left <= 2 and claim.rank() > 7:
-            chance = chance + 0.3
+   def follow_value(self, claim, rest):
+      # kort han har kvar som kan läggas efter claim, så han kan fortsätta serien
+      count = 0
+      for other in rest:
+         if other.can_follow(claim):
+            count = count + 1
+      return min(count, 2) * 0.3
 
-        if len(self.valid_cards(claim)) == 0:
-            chance = chance + 0.15  # han kan ändå inte lägga något
+   def call_risk(self, cards_after, nerves, empty_table):
+      # hur troligt han tror det är att motståndaren säger bluffstopp
+      if cards_after == 0:
+         return 0.97  # på sista kortet synar man nästan alltid
+      risk = 0.3 + nerves
+      if cards_after == 1:
+         risk = risk + 0.2
+      if empty_table:
+         risk = risk - 0.5  # på tomt bord är alla kort tillåtna, så motståndaren har ingen ledtråd
+      return max(0.05, min(risk, 0.95))
 
-        if random.random() < chance:
-            return True
-        return False
+   def nerves(self, seconds):
+      # hur nervös han är just nu. har han tvekat länge tror han att det syns på honom,
+      # men med 1-2 kort kvar struntar han i det och försöker gå ut
+      nerves = random.uniform(0.05, 0.65)
+      if seconds > 2.0 and len(self.hand) > 2:
+         nerves = nerves + 0.4
+      return nerves
 
-    def think_time(self, is_bluff):
-        # hur länge han "tänker" så det inte känns så dator
-        seconds = random.uniform(1.0, 2.5)
+   def noise(self):
+      # lite slump så han inte alltid gör exakt samma sak
+      return random.uniform(-0.5, 0.5)
 
-        # när han bluffar tar det ibland längre, ibland lika lång eller kortare tid
-        if is_bluff:
-            seconds = seconds * random.choice([0.7, 1.0, 1.5])
+   # ---------- bluffstopp ----------
 
-        return seconds
+   def wants_to_call_bluff(self, claim, human_cards_left):
+      # har han själv kortet vet han att det är bluff
+      if self.has_card(claim.suit, claim.value):
+         return True
+
+      # har kortet redan spelats kan det inte ligga där igen
+      if self.has_seen(claim.suit, claim.value):
+         return True
+
+      # om människan la sitt sista kort måste han säga bluffstopp, annars förlorar han
+      if human_cards_left == 0:
+         return True
+
+      # har människan redan sagt det kortet är minst en av gångerna bluff
+      if self.has_claimed(claim.suit, claim.value):
+         return random.random() < 0.85
+
+      chance = 0.2
+      # människan är nära att vinna. men ett lågt kort (2-7) är oftast ärligt, så då litar han på det
+      if human_cards_left <= 2 and claim.rank() > 7:
+         chance = chance + 0.3
+
+      if len(self.valid_cards(claim)) == 0:
+         chance = chance + 0.15  # han kan ändå inte lägga något
+
+      if random.random() < chance:
+         return True
+      return False
+
+   # ---------- väntetid ----------
+
+   def think_time(self):
+      # hur länge han "tänker" innan han lägger kort. slumpas innan han bestämmer sig
+      return random.uniform(1.0, 2.5)
+
+   def bluff_think_time(self):
+      # hur länge han funderar på om han ska säga bluffstopp
+      return random.uniform(0.5, 1.5)
