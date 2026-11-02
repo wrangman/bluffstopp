@@ -125,8 +125,8 @@ class AIPlayer(Player):
                continue
 
             if top is None:
-               # tomt bord: bluffa bara med ett högre kort än det han lägger
-               if other.rank() > card.rank():
+               # tomt bord: bluffa med ett högre kort eller samma valör i en annan färg
+               if other.rank() >= card.rank():
                   claims.append(other)
             elif other.suit == top.suit:
                # samma färg: högst 5 steg upp, annars blir det för misstänkt
@@ -155,7 +155,9 @@ class AIPlayer(Player):
          score = score + self.stop_value(claim) * 2.5 / max(opponent_cards, 1)
          score = score + self.dump_value(card, rest)
          score = score + self.follow_value(claim, rest)
-         if not card.same_as(claim):
+         # bluffa med ett kort som kunde ha sparats kostar. på tomt bord kostar det inget,
+         # där hade kortet ändå kunnat läggas ärligt, så frågan är bara vad han säger
+         if not card.same_as(claim) and top is not None:
             score = score - self.waste_value(card, top, rest)
 
       if card.same_as(claim):

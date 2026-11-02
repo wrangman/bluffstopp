@@ -1,0 +1,31 @@
+Resultat av ändringen (ingen kostnad för bluff på tomt bord)
+Ditt exempel: "♦ K, säg ♥ K" väljer han fortfarande aldrig. I stället lägger han ♦ K och säger ♥ A i 4 % av fallen. Det är rimligt, eftersom ♥ A är hans eget kort, så du kan inte veta att det är en lögn. Ett ess är dessutom svårare att följa.
+Han blev starkare: mot en ärlig spelare vinner han 60 % (innan 50–53 %), mot den gamla datorn 62 %.
+Men han bluffar mycket mer på tomt bord: 23 % av dragen där, mot 5 % innan. Han säger sitt eget kort i 812 av 2425 bluffar. Det kan vara för mycket. Se tankefel 1 nedan, som förklarar en del av det.
+Tankefel jag hittade i motorn
+Jag har läst igenom hela ai_player.py och de anrop i game.py som rör datorn. Felen står i ordning, det viktigaste först. Jag har inte ändrat något.
+
+1. Slumpen gynnar bluffar (choose_move, rad 104–109)
+Varje påstående får sin egen slump på ±0,5, och han tar det högsta värdet. Ett lågt kort på tomt bord har ~45 möjliga bluffpåståenden men bara ett ärligt. Det är som att bluffen får 45 lotter och det ärliga draget en enda. Bluffar vinner därför oftare än poängen motiverar, och det är en stor del av förklaringen till 23 %. Åtgärd: slump en gång per kort, inte per påstående.
+
+2. Han kan säga ett kort som du själv har lagt (opponent_knows, rad 241–254)
+Han kollar om du kan ha kortet, men inte om du själv har sagt det tidigare. Har du lagt ♥ Q ärligt och han sedan säger ♥ Q, vet du med säkerhet att han ljuger. Kort i claimed_cards borde räknas som "du vet troligen att det är en bluff".
+
+3. Blockering räknar inte med hur många kort du har (stop_value, rad 178–190)
+Ett ess räknas som lika svårt att följa oavsett om du har 2 eller 12 kort. Med 12 kort har du troligen ett av de 3 andra essen. bluff_chance räknar redan rätt på det här sättet (chansen att du har ett passande kort beror på hur många kort du har), men stop_value gör det inte. Samma uträkning borde användas på båda ställena.
+
+4. Slutet av spelet när leken är tom
+När leken är slut kostar ett pass ingenting (du drar inget kort), och straffet är 1 kort i stället för 3. Han vet inte hur många kort som är kvar i leken, så han räknar alltid med det dyra. Han passar och bluffar alltså fel i slutet av spelet.
+
+5. Han tänker bara ett drag framåt (follow_value, rad 218–224)
+Det är samma sak som i ditt ♥ A-exempel. Han ser inte att ett kort han har kvar kan läggas på ditt svar, bara på sitt eget påstående.
+
+6. Ärliga drag värderas lite för lågt (score_move, rad 163–164)
+Säger du bluffstopp på ett ärligt kort drar du 3 kort, och han får börja om. Den fördelen räknas inte, så ärliga drag ser lite sämre ut än de är.
+
+7. Det du passade på används inte när han säger bluffstopp
+Har du passat på ♥ 7 och sedan säger ♥ K, borde han bli misstänksam, eftersom du förmodligen inte har några höga hjärter. I dag använder han den kunskapen bara när han själv väljer drag.
+
+8. Ditt skäl 2 saknas fortfarande, alltså "säg bluffstopp oftare när du inte kan lägga något själv". Det väntar på ditt beslut.
+
+Min rekommendation: börja med 1 och 2. Det är tydliga fel med små ändringar, och 1 påverkar bluffnivån direkt. 3 och 4 är också verkliga fel men kräver lite mer. Ska jag fixa 1 och 2?
