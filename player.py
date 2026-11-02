@@ -30,7 +30,7 @@ class Player():
         return lowest
 
     def random_card(self):
-        # tar ett slumpat kort ur handen (används när talongen är slut)
+        # tar ett slumpat kort ur handen (används när leken är slut)
         if self.hand:
             r = random.randint(0, len(self.hand) - 1)
             return self.hand.pop(r)

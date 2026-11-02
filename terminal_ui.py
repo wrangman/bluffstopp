@@ -10,7 +10,7 @@ class TerminalUI:
         self.messages = []  # det senaste som hänt, visas under bordet
         self.suit_codes = {"s": "♠", "h": "♥", "k": "♣", "r": "♦"}
 
-        self.add_message(game.start_message)  # visa kortet som lades från talongen
+        self.add_message(game.start_message)  # visa kortet som lades från leken
 
     def clear(self):
         subprocess.run('cls' if os.name == 'nt' else 'clear', shell=True)
@@ -31,7 +31,7 @@ class TerminalUI:
         self.clear()
 
         print("========== BLUFFSTOPP ==========")
-        print(f"Talongen: {game.deck.cards_left()} kort    {game.ai.name}: {game.ai.cards_left()} kort")
+        print(f"Leken: {game.deck.cards_left()} kort    {game.ai.name}: {game.ai.cards_left()} kort")
         print()
 
         for message in self.messages:
@@ -39,15 +39,19 @@ class TerminalUI:
         print()
 
         if game.claim is None:
-            print("Bordet: tomt, talongen är slut så vilket kort som helst får läggas")
+            print(f"Bordet: tomt, {game.current.name} får lägga vilket kort som helst")
         else:
+            # kortet från leken vet alla vad det är. andra kort ligger upp och ned och får ett frågetecken
             if game.last_player is None:
-                who = "från talongen"
+                who = "från leken"
+                mark = ""
             elif game.last_player == game.human:
                 who = "ditt drag"
+                mark = " ?"
             else:
                 who = f"{game.ai.name}s drag"
-            print(f"Bordet:  [ {self.colored(game.claim)} ]   ({who})")
+                mark = " ?"
+            print(f"Bordet:  [ {self.colored(game.claim)}{mark} ]   ({who})")
         print()
 
         print("Din hand:")
@@ -55,9 +59,28 @@ class TerminalUI:
         print()
 
     def show_hand(self, player):
-        # en lista med siffror framför, t.ex. "1. ♥ K"
-        for i in range(len(player.hand)):
-            print(f"{i + 1}. {self.colored(player.hand[i])}")
+        # upp till 6 kort: en lista. fler än 6: max 3 spalter så det inte blir så högt
+        # numreringen går nedåt i spalt 1 först, sen spalt 2 osv.
+        if len(player.hand) <= 6:
+            columns = 1
+        else:
+            columns = 3
+
+        # hur många rader behövs? avrunda uppåt
+        rows = len(player.hand) // columns
+        if len(player.hand) % columns != 0:
+            rows = rows + 1
+
+        for row in range(rows):
+            line = ""
+            for col in range(columns):
+                i = col * rows + row  # positionen i handen för den här rutan
+                if i < len(player.hand):
+                    card = player.hand[i]
+                    text = f"{i + 1}. {card}"
+                    spaces = " " * (12 - len(text))  # fyller ut så korten hamnar i raka spalter
+                    line = line + f"{i + 1}. {self.colored(card)}" + spaces
+            print(line)
 
     def parse_code(self, code):
         # "hk" -> Card("♥", "K"), "s10" -> Card("♠", 10)
@@ -81,24 +104,20 @@ class TerminalUI:
 
         return Card(self.suit_codes[letter], value)
 
-    def human_syn(self):
-        game = self.game
-        answer = input(f"Vill du syna {game.ai.name}s kort? (j/n): ")
-
-        if answer.strip().lower() == "j":
-            was_bluff, text = game.syn()
-            self.add_message(text)
-            self.pause(text)
-            return True
-        return False
-
-    def ai_syn(self):
-        text = self.game.ai_try_syn()
+    def ai_call_bluff(self):
+        card = self.game.last_card  # sparas innan bordet töms
+        text = self.game.ai_try_call_bluff()
         if text is not None:
-            self.add_message(text)
-            self.pause(text)
+            self.show_bluff_call(card, text)
             return True
         return False
+
+    def show_bluff_call(self, card, text):
+        # kortet man sa bluffstopp på vänds upp, så det visas utan frågetecken
+        self.add_message(text)
+        print()
+        print(f"Kortet vänds:  [ {self.colored(card)} ]")
+        self.pause(text)
 
     def pause(self, text):
         # visar vad som hände och väntar på enter innan skärmen rensas
@@ -106,22 +125,43 @@ class TerminalUI:
         print(">>> " + text)
         input("Tryck enter för att fortsätta...")
 
-    def human_move(self):
+    def show_options(self):
         game = self.game
+        line = f"1-{game.human.cards_left()} = lägg kort"
+        if game.can_call_bluff():
+            line = line + "   b = bluffstopp"
+        if game.can_pass():
+            line = line + "   p = pass"
+        line = line + "   q/a = avsluta"
+        print(line)
+
+    def human_move(self):
+        # ger tillbaka "spelat", "bluffstopp", "slut" eller "avsluta"
+        game = self.game
+        self.show_options()
 
         while True:
-            if game.can_stopp():
-                choice = input("Välj kortnummer eller skriv 'stopp': ")
-            else:
-                choice = input("Välj kortnummer: ")
-            choice = choice.strip().lower()
+            choice = input("> ").strip().lower()
 
-            if choice == "stopp" and game.can_stopp():
-                self.add_message(game.stopp())
-                return
+            if choice == "q" or choice == "a":
+                return "avsluta"
+
+            if (choice == "b" or choice == "s") and game.can_call_bluff():
+                card = game.last_card  # sparas innan bordet töms
+                was_bluff, text = game.call_bluff()
+                self.show_bluff_call(card, text)
+                return "bluffstopp"
+
+            # har datorn lagt sitt sista kort och du inte säger bluffstopp har den vunnit
+            if game.winner() is not None:
+                return "slut"
+
+            if choice == "p" and game.can_pass():
+                self.add_message(game.pass_turn())
+                return "spelat"
 
             if not choice.isdigit():
-                print("Skriv ett nummer.")
+                print("Det valet finns inte.")
                 continue
 
             index = int(choice) - 1
@@ -145,7 +185,7 @@ class TerminalUI:
                     self.add_message(f"Du la {self.colored(card)}")
                 else:
                     self.add_message(f"Du la {self.colored(card)} och sa {self.colored(claimed_card)} (bluff)")
-                return
+                return "spelat"
 
             print(f"Du kan inte säga {claimed_card} här. Samma färg och högre, eller samma valör i en annan färg.")
 
@@ -156,8 +196,30 @@ class TerminalUI:
         is_bluff, text = game.ai_move()
         time.sleep(game.ai.think_time(is_bluff))  # väntan ligger här och inte i AIPlayer
 
-        self.add_message(text)
-        self.pause(text)
+        self.add_message(text)  # syns på bordet och i listan, så ingen enter behövs
+
+    def end_round(self):
+        # visar vem som vann. ger tillbaka True om man vill spela en omgång till
+        game = self.game
+        winner = game.winner()
+        self.show_table()
+
+        if winner == game.human:
+            print("Du blev av med alla kort. Du vann omgången!")
+        else:
+            print(f"{game.ai.name} blev av med alla kort. {game.ai.name} vann omgången!")
+        print()
+
+        choice = input("Enter = ny omgång   q/a = avsluta\n> ").strip().lower()
+        if choice == "q" or choice == "a":
+            print("Spelet avslutades.")
+            return False
+
+        game.new_round(winner)  # vinnaren börjar nästa omgång
+        self.messages = []
+        self.add_message(f"Ny omgång! {winner.name} vann förra och börjar.")
+        self.add_message(game.start_message)
+        return True
 
     def run(self):
         game = self.game
@@ -165,28 +227,34 @@ class TerminalUI:
         while True:
             self.show_table()
 
-            # 1. får man syna motståndarens kort?
-            if game.can_syn():
-                if game.current == game.human:
-                    synade = self.human_syn()
-                else:
-                    synade = self.ai_syn()
-
-                if synade:
-                    self.show_table()
-
-            # 2. har någon blivit av med alla kort?
-            winner = game.winner()
-            if winner is not None:
-                self.show_table()
-                if winner == game.human:
-                    print("Du blev av med alla kort. Du vann!")
-                else:
-                    print(f"{game.ai.name} blev av med alla kort. {game.ai.name} vann!")
-                break
-
-            # 3. lägg ett kort eller säg stopp
             if game.current == game.human:
-                self.human_move()
+                # om du inte kan säga bluffstopp och någon redan har 0 kort är omgången slut
+                if not game.can_call_bluff() and game.winner() is not None:
+                    if self.end_round():
+                        continue
+                    break
+
+                action = self.human_move()
+
+                if action == "avsluta":
+                    print("Spelet avslutades.")
+                    break
+                if action == "slut":
+                    if self.end_round():
+                        continue
+                    break
+
             else:
+                # 1. datorn kan säga bluffstopp på ditt kort
+                if game.can_call_bluff():
+                    if self.ai_call_bluff():
+                        continue  # visa bordet igen innan datorn spelar
+
+                # 2. har någon blivit av med alla kort?
+                if game.winner() is not None:
+                    if self.end_round():
+                        continue
+                    break
+
+                # 3. datorn lägger ett kort eller säger pass
                 self.ai_move()

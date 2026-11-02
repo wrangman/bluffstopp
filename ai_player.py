@@ -16,7 +16,7 @@ class AIPlayer(Player):
         return valid
 
     def choose_move(self, top):
-        # ger tillbaka (position, kortet han säger) eller None om han säger stopp
+        # ger tillbaka (position, kortet han säger) eller None om han säger pass
 
         # ny sekvens: lägg lägsta kortet, ärligt
         if top is None:
@@ -58,12 +58,12 @@ class AIPlayer(Player):
 
         return random.choice(options)
 
-    def wants_to_syn(self, claim, human_cards_left):
+    def wants_to_call_bluff(self, claim, human_cards_left):
         # har han själv kortet vet han att det är bluff
         if self.has_card(claim.suit, claim.value):
             return True
 
-        # om människan la sitt sista kort måste han syna, annars förlorar han
+        # om människan la sitt sista kort måste han säga bluffstopp, annars förlorar han
         if human_cards_left == 0:
             return True
 

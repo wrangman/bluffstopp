@@ -19,7 +19,7 @@ class Deck:
         return dealt_cards
 
     def draw(self, num_cards):
-        # som deal, men kraschar inte om talongen håller på att ta slut
+        # som deal, men kraschar inte om leken håller på att ta slut
         if num_cards > len(self.cards):
             num_cards = len(self.cards)
 
