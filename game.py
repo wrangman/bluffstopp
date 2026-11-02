@@ -25,6 +25,7 @@ class Game:
       self.ai.forget_all()  # datorn glömmer korten från förra omgången
 
       self.claim = None       # kortet man SÄGER att man la
+      self.claim_before = None # kortet som låg på bordet innan det senaste (None = bordet var tomt)
       self.last_card = None    # kortet som faktiskt ligger där
       self.last_player = None  # den som la senaste kortet
       self.bluff_called = False    # man får bara säga bluffstopp en gång per tur
@@ -95,6 +96,7 @@ class Game:
       self.last_card = self.current.remove_card(index)
       if self.current == self.ai:
          self.ai.remember(self.last_card)  # datorn vet vilka kort han själv har lagt
+      self.claim_before = self.claim
       self.claim = claimed_card
       self.last_player = self.current
       self.next_turn()
@@ -102,6 +104,9 @@ class Game:
 
    def pass_turn(self):
       player = self.current
+      if player == self.human:
+         self.ai.remember_pass(self.claim)  # datorn ser vilket kort du inte kunde eller ville lägga på
+
       drawn = self.deck.draw(1)
       player.take_cards(drawn)
 
@@ -115,6 +120,9 @@ class Game:
 
    def penalty(self, loser, winner):
       # den som hade fel drar 3 kort, eller tar 1 kort från motståndaren om leken är slut
+      if loser == self.human:
+         self.ai.forget_passes()  # du får nya kort, så datorn vet inte längre vad du saknar
+
       if self.deck.cards_left() > 0:
          loser.take_cards(self.deck.draw(3))
          return f"{loser.name} drar 3 kort."
@@ -146,7 +154,7 @@ class Game:
 
    def ai_try_call_bluff(self):
       # datorn bestämmer om den vill säga bluffstopp. ger tillbaka text, eller None om den inte gör det
-      if self.ai.wants_to_call_bluff(self.claim, self.human.cards_left()):
+      if self.ai.wants_to_call_bluff(self.claim, self.claim_before, self.human.cards_left()):
          was_bluff, text = self.call_bluff()
          return text
       self.ai.remember_claim(self.claim)  # han litade på det, men kommer ihåg att du sa det

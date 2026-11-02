@@ -3,12 +3,17 @@ import subprocess
 import time
 from card import Card, card_ranks
 
+SHOW_AI_MEMORY = True  # felsökning: visa vad datorn kommer ihåg.
+SHOW_AI_HAND = True  # felsökning: visa datorns hand.
+
 
 class TerminalUI:
    def __init__(self, game):
       self.game = game
       self.messages = []  # det senaste som hänt, visas under bordet
       self.suit_codes = {"s": "♠", "h": "♥", "k": "♣", "r": "♦"}
+      self.ai_hand_before = game.ai.hand[:]  # felsökning: datorns hand före hans senaste drag
+      self.ai_played = None                   # felsökning: kortet han faktiskt la, None om han passade
 
       self.add_message(game.start_message)  # visa kortet som lades från leken
 
@@ -31,8 +36,17 @@ class TerminalUI:
       self.clear()
 
       print("========== BLUFFSTOPP ==========")
-      print(f"Leken: {game.deck.cards_left()} kort    {game.ai.name}: {game.ai.cards_left()} kort")
+      if game.ai.cards_left() == 0:
+         ai_text = "inga kort kvar"
+      else:
+         ai_text = f"{game.ai.cards_left()} kort"
+      print(f"Leken: {game.deck.cards_left()} kort    {game.ai.name}: {ai_text}")
       print()
+
+      if SHOW_AI_MEMORY:
+         self.show_ai_memory()
+      if SHOW_AI_HAND:
+         self.show_ai_hand()
 
       for message in self.messages:
          print(message)
@@ -54,9 +68,42 @@ class TerminalUI:
          print(f"Bordet:  [ {self.colored(game.claim)}{mark} ]   ({who})")
       print()
 
-      print("Din hand:")
-      self.show_hand(game.human)
+      if game.human.cards_left() == 0:
+         print("Din hand: inga kort kvar")
+      else:
+         print("Din hand:")
+         self.show_hand(game.human)
       print()
+
+   def show_ai_memory(self):
+      # bara för felsökning: visar vad datorn kommer ihåg just nu
+      ai = self.game.ai
+      print(f"--- {ai.name}s minne (felsökning) ---")
+      print("Vet är spelade: " + self.card_list(ai.seen_cards))
+      print("Du har sagt:    " + self.card_list(ai.claimed_cards))
+      print("Du passade på:  " + self.card_list(ai.passed_on))
+      print()
+
+   def show_ai_hand(self):
+      # bara för felsökning: visar datorns kort
+      ai = self.game.ai
+      # "före draget" står kvar så man kan se om kortet han sa fanns på handen
+      print(f"--- {ai.name}s hand (felsökning) ---")
+      print("Före draget: " + self.card_list(self.ai_hand_before, self.ai_played))
+      print()
+
+   def card_list(self, cards, marked=None):
+      # korten efter varandra, röda kort i rött. "inga" om listan är tom.
+      # kortet som är samma som marked får hakparenteser runt sig
+      if len(cards) == 0:
+         return "inga"
+      text = ""
+      for card in cards:
+         if marked is not None and card.same_as(marked):
+            text = text + "[" + self.colored(card) + "]  "
+         else:
+            text = text + self.colored(card) + "  "
+      return text
 
    def show_hand(self, player):
       # upp till 6 kort: en lista. fler än 6: max 3 spalter så det inte blir så högt
@@ -200,7 +247,12 @@ class TerminalUI:
       # väntetiden slumpas först, sen bestämmer han sig. väntan ligger här och inte i AIPlayer
       seconds = game.ai.think_time()
       time.sleep(seconds)
+      self.ai_hand_before = game.ai.hand[:]  # felsökning: spara handen innan kortet försvinner
       text = game.ai_move(seconds)
+      if game.last_player == game.ai:
+         self.ai_played = game.last_card  # det riktiga kortet han la
+      else:
+         self.ai_played = None  # han sa pass
 
       self.add_message(text)  # syns på bordet och i listan, så ingen enter behövs
 
@@ -211,9 +263,9 @@ class TerminalUI:
       self.show_table()
 
       if winner == game.human:
-         print("Du har inga kort kvar – Du vann omgången!")
+         print("Du vann omgången!")
       else:
-         print(f"{game.ai.name} har inga kort kvar – {game.ai.name} vann omgången!")
+         print(f"{game.ai.name} vann omgången!")
       print()
 
       choice = input("Enter = ny omgång   q/a = avsluta\n> ").strip().lower()
@@ -222,6 +274,8 @@ class TerminalUI:
          return False
 
       game.new_round(winner)  # vinnaren börjar nästa omgång
+      self.ai_hand_before = game.ai.hand[:]
+      self.ai_played = None
       self.messages = []
       self.add_message(f"Ny omgång! {winner.name} vann förra och börjar.")
       self.add_message(game.start_message)

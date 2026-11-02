@@ -17,13 +17,13 @@ Inga externa beroenden, bara standardbiblioteket. Det finns inga tester.
 - `deck.py` – `Deck`. `make_deck()` och `shuffle_deck()` (egen Fisher–Yates) är statiska. `deal()` kastar fel om korten inte räcker, `draw()` tar så många som finns.
 - `player.py` – `Player` med handen och hjälpmetoder.
 - `ai_player.py` – `AIPlayer(Player)`.
-  - **Minne:** kort han vet är spelade (`seen_cards`) och vad människan har sagt utan att han sa bluffstopp (`claimed_cards`). Har han fler än 10 kort i minnet totalt glömmer han 1–3 slumpade (`forget_some`), så att han går att lura.
+  - **Minne:** kort han vet är spelade (`seen_cards`) och vad människan har sagt utan att han sa bluffstopp (`claimed_cards`). Har han fler än 10 kort i minnet totalt glömmer han 1–3 av de äldsta (`forget_some`), slumpat från båda listorna. Det sista kortet i en lista glöms aldrig. Han kommer också ihåg vilka kort människan har passat på (`passed_on`). Högre kort i den färgen räknas då som halvt så troliga i `stop_value`, så han säger gärna den färgen igen. Det glöms när människan får straffkort.
   - **Drag (`choose_move`):** han listar alla möjliga drag (pass, ärliga kort och bluffar) och ger varje drag poäng (`score_move` / `score_pass`). Sedan väljer han det bästa, med lite slump. Poängen bygger på flera saker: att bli av med kort, att låga kort är svåra att bli av med senare, serier, hur svårt påståendet är att följa (`stop_value`) och risken att bli synad (`call_risk`). Undvik att lägga in specialfall med `if`. Ändra hellre poängen.
-  - **Bluffar:** samma valör i en annan färg, eller samma färg 1–5 steg upp. På tomt bord kan han säga vilket högre kort som helst ("lägg lågt, säg högt"). Han får säga kort han själv har eller som redan spelats, för det är spelarens sak att komma ihåg. Att slänga ett högt kort, ett kort som passar eller ett kort i en serie som bluff kostar poäng (`waste_value`), så han bluffar nästan alltid med låga, ensamma kort.
+  - **Bluffar:** samma valör i en annan färg, eller samma färg 1–5 steg upp. På tomt bord kan han säga vilket högre kort som helst ("lägg lågt, säg högt"). Han får säga kort han själv har eller som redan spelats, för det är spelarens sak att komma ihåg. I risken räknar han med chansen att motståndaren *vet* att det är bluff (`opponent_knows`): 0 för hans egna kort, 0,2 för spelade kort och annars chansen att kortet ligger på motståndarens hand. Därför säger han gärna sina egna höga kort. Att slänga ett högt kort, ett kort som passar eller ett kort i en serie som bluff kostar poäng (`waste_value`), så han bluffar nästan alltid med låga, ensamma kort.
   - **Väntetid:** `think_time` slumpas *innan* draget. Efter lång väntan (> 2,0 s) är han nervösare (`nerves`) och bluffar mer sällan, utom med 1–2 kort kvar.
   - **Bluffstopp (`wants_to_call_bluff`):** säkra regler först, sedan sannolikheter.
 - `game.py` – `Game`: all spellogik och allt tillstånd. Ingen `print` eller `input` här.
-- `terminal_ui.py` – `TerminalUI`: ritar bordet, läser in val och kör spelloopen (`run()`).
+- `terminal_ui.py` – `TerminalUI`: ritar bordet, läser in val och kör spelloopen (`run()`). `SHOW_AI_MEMORY` och `SHOW_AI_HAND` högst upp visar datorns minne och hand ovanför bordet för felsökning. Sätt dem till `False` när spelet är klart.
 
 ## Arkitektur
 
@@ -64,3 +64,12 @@ Projektet är skrivet på en nivå som passar kursen. Följ samma stil:
 - Korta kommentarer som förklarar *varför*, i samma ton som den befintliga koden.
 - Inga externa bibliotek.
 - Färgerna på korten lagras som Unicode-symboler (`"♠"`, `"♥"`, `"♣"`, `"♦"`), och valören som `int` (2–10) eller `str` (`"J"`, `"Q"`, `"K"`, `"A"`). Jämför kort med `same_as()`, inte `==`.
+
+## Att provspela (datorspelaren)
+
+Ställs in efter provspel. Siffrorna kommer från en simulering mot den gamla datorn (800 spel, slumpen är ungefär ±2 %).
+
+- **Blockering när motståndaren närmar sig vinst:** i `score_move` är bonusen stoppvärdet × 2,5 / motståndarens kort. Den ersatte en `if` som bara gällde vid 1 kort. Effekten är knappt mätbar: vid 1–2 kort säger han dam, kung eller ess i ~40 % av dragen, både före och efter. Känns han för snäll mot en spelare som snart går ut kan vikten höjas, t.ex. till × 5.
+- **Tvekan:** efter lång väntan passar han i ~74 % av fallen när inget kort passar (önskat var ~66 %), och annars i ~16 % (önskat ~20 %). Styrs av `nerves` och grundrisken i `call_risk`.
+- **Lägg lågt, säg högt på tomt bord:** händer i ~3 % av dragen där. Det var 5–6 % innan `opponent_knows` lades till. Styrs av avdraget för tomt bord i `call_risk`.
+- Varje ändring av vikterna påverkar de andra siffrorna, så ändra en sak i taget och provspela.
