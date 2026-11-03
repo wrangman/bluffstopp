@@ -1175,10 +1175,12 @@ class GraphicUI:
       # leken ritas som några baksidor på varandra. sparas så det inte görs varje bild
       if layers not in self.deck_images:
          back = CardSprite.back
-         surface = pygame.Surface((back.get_width() + 6, back.get_height() + 6), pygame.SRCALPHA)
+         # varje kort under ligger 3 px snett bakom. alltid plats för 4, så översta kortet står still
+         extra = 3 * 3
+         surface = pygame.Surface((back.get_width() + extra, back.get_height() + extra), pygame.SRCALPHA)
          for i in range(layers):
             offset = (layers - 1 - i) * 3
-            surface.blit(back, (6 - offset, 6 - offset))
+            surface.blit(back, (extra - offset, extra - offset))
          self.deck_images[layers] = surface
       return self.deck_images[layers]
 
@@ -1190,11 +1192,10 @@ class GraphicUI:
          pygame.draw.rect(self.screen, LIGHT_GRAY, empty, 2, border_radius=8)
          return
 
-      layers = 1
-      if left > 10:
-         layers = 3
-      elif left > 1:
-         layers = 2
+      # högen blir ett kort tunnare för varje 16 kort: 1-16 kvar = 1, 17-32 = 2, 33-48 = 3, fler = 4
+      layers = (left - 1) // 16 + 1
+      if layers > 4:
+         layers = 4
       image = pygame.transform.rotozoom(self.deck_image(layers), 0, self.deck_scale)
       image.set_alpha(int(self.deck_alpha))
       self.screen.blit(image, image.get_rect(center=(DECK_X, DECK_Y)))
