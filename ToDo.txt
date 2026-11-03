@@ -1,31 +1,74 @@
-Resultat av ändringen (ingen kostnad för bluff på tomt bord)
-Ditt exempel: "♦ K, säg ♥ K" väljer han fortfarande aldrig. I stället lägger han ♦ K och säger ♥ A i 4 % av fallen. Det är rimligt, eftersom ♥ A är hans eget kort, så du kan inte veta att det är en lögn. Ett ess är dessutom svårare att följa.
-Han blev starkare: mot en ärlig spelare vinner han 60 % (innan 50–53 %), mot den gamla datorn 62 %.
-Men han bluffar mycket mer på tomt bord: 23 % av dragen där, mot 5 % innan. Han säger sitt eget kort i 812 av 2425 bluffar. Det kan vara för mycket. Se tankefel 1 nedan, som förklarar en del av det.
-Tankefel jag hittade i motorn
-Jag har läst igenom hela ai_player.py och de anrop i game.py som rör datorn. Felen står i ordning, det viktigaste först. Jag har inte ändrat något.
+STATUS – var vi är (2026-11-03)
+================================
 
-1. Slumpen gynnar bluffar (choose_move, rad 104–109)
-Varje påstående får sin egen slump på ±0,5, och han tar det högsta värdet. Ett lågt kort på tomt bord har ~45 möjliga bluffpåståenden men bara ett ärligt. Det är som att bluffen får 45 lotter och det ärliga draget en enda. Bluffar vinner därför oftare än poängen motiverar, och det är en stor del av förklaringen till 23 %. Åtgärd: slump en gång per kort, inte per påstående.
+De 8 tankefelen i datorspelaren är ÅTGÄRDADE I KODEN men INTE TESTADE.
+Ändringarna ligger i ai_player.py och game.py och är inte committade.
+Koden kompilerar, men den har inte körts i simulering eller provspelats.
 
-2. Han kan säga ett kort som du själv har lagt (opponent_knows, rad 241–254)
-Han kollar om du kan ha kortet, men inte om du själv har sagt det tidigare. Har du lagt ♥ Q ärligt och han sedan säger ♥ Q, vet du med säkerhet att han ljuger. Kort i claimed_cards borde räknas som "du vet troligen att det är en bluff".
+NÄSTA STEG
+1. Kör simuleringarna och kolla att inget blev konstigt (se "Simulering" nedan).
+   Jämför med siffrorna under "Före ändringarna".
+2. Provspela: python3 main.py
+3. Om allt ser bra ut: committa.
 
-3. Blockering räknar inte med hur många kort du har (stop_value, rad 178–190)
-Ett ess räknas som lika svårt att följa oavsett om du har 2 eller 12 kort. Med 12 kort har du troligen ett av de 3 andra essen. bluff_chance räknar redan rätt på det här sättet (chansen att du har ett passande kort beror på hur många kort du har), men stop_value gör det inte. Samma uträkning borde användas på båda ställena.
 
-4. Slutet av spelet när leken är tom
-När leken är slut kostar ett pass ingenting (du drar inget kort), och straffet är 1 kort i stället för 3. Han vet inte hur många kort som är kvar i leken, så han räknar alltid med det dyra. Han passar och bluffar alltså fel i slutet av spelet.
+DE 8 ÅTGÄRDERNA (gjorda i koden, otestade)
+-------------------------------------------
+1. Slumpen gynnade bluffar (choose_move)
+   Förut: slump ±0,5 per påstående. Ett kort med många möjliga bluffar fick "fler lotter".
+   Nu: slump ±0,5 per KORT, plus lite slump (±0,1) i vad han säger.
 
-5. Han tänker bara ett drag framåt (follow_value, rad 218–224)
-Det är samma sak som i ditt ♥ A-exempel. Han ser inte att ett kort han har kvar kan läggas på ditt svar, bara på sitt eget påstående.
+2. Han kunde säga ett kort som du själv har sagt (opponent_knows)
+   Nu: säger han ett kort som finns i claimed_cards räknar han med 0,8 att du vet att det är bluff.
 
-6. Ärliga drag värderas lite för lågt (score_move, rad 163–164)
-Säger du bluffstopp på ett ärligt kort drar du 3 kort, och han får börja om. Den fördelen räknas inte, så ärliga drag ser lite sämre ut än de är.
+3. Blockering räknade inte med hur många kort du har (stop_value)
+   Nu: stop_value = chansen att inget av dina kort passar = (1 - passande/okända) ^ dina kort.
+   Samma tänk som bluff_chance. OBS: siffrorna blev lite lägre än förut, vikterna kan behöva justeras.
 
-7. Det du passade på används inte när han säger bluffstopp
-Har du passat på ♥ 7 och sedan säger ♥ K, borde han bli misstänksam, eftersom du förmodligen inte har några höga hjärter. I dag använder han den kunskapen bara när han själv väljer drag.
+4. Tom lek i slutet av spelet (score_pass, ny penalty_cost)
+   choose_move får nu deck_left (game.py skickar self.deck.cards_left()).
+   Pass kostar 0 kort om leken är slut. Straffet är min(3, kort i leken), eller 2 om leken är tom
+   (man tar ett kort från motståndaren).
 
-8. Ditt skäl 2 saknas fortfarande, alltså "säg bluffstopp oftare när du inte kan lägga något själv". Det väntar på ditt beslut.
+5. Han tänkte bara ett drag framåt (follow_value)
+   Nu: går igenom alla kort du kan SVARA med och räknar hur stor del han kan lägga på
+   med något kort han har kvar. (Löser ♥ A-exemplet: säg ♥ A, lägg ♦ K, följ sedan med ♥ A.)
 
-Min rekommendation: börja med 1 och 2. Det är tydliga fel med små ändringar, och 1 påverkar bluffnivån direkt. 3 och 4 är också verkliga fel men kräver lite mer. Ska jag fixa 1 och 2?
+6. Ärliga drag värderades för lågt (score_move)
+   Nu: ärligt drag får +0,15 × (straff + värdet av att börja om), för du säger ibland bluffstopp i onödan.
+
+7. Det du passade på användes inte när han säger bluffstopp (wants_to_call_bluff)
+   Nu: +0,4 på misstanken om du säger ett högre kort i en färg du har passat på.
+
+8. Bluffstopp när han inte kan lägga själv (wants_to_call_bluff)
+   Nu: misstanken × 1,5 när han inte har något passande kort. Gånger och inte plus,
+   så utan skäl att misstänka blir det fortfarande lite (tomt bord: 3 % -> 4,5 %).
+   Detta var Claudes förslag, du var osäker. Ta bort om det känns fel.
+
+
+FÖRE ÄNDRINGARNA (att jämföra med)
+-----------------------------------
+Mot ärlig spelare (sim/honest_sim.py, 400 spel):
+  vinster ny 60 %, bluffstopp 3,2 per spel varav 42 % rätt,
+  största hand median 7 / vart tionde spel 12+.
+Mot gamla datorn (sim/sim.py, 800 spel):
+  vinster ny 62 %, tvekan -> pass 68 %, bluff på tomt bord 23 % (troligen för mycket, se punkt 1),
+  säger eget kort i 812 av 2425 bluffar.
+
+
+SIMULERING
+----------
+Skripten ligger i mappen sim/ (de är verktyg för utvecklingen, inte en del av spelet).
+Kör från projektmappen:
+  python3 sim/honest_sim.py 400   (mot en bot som spelar ärligt som du)
+  python3 sim/sim.py 800          (mot den gamla datorn, sim/old_ai_player.py)
+Varje körning tar ungefär en halv minut till en minut. Kör högst 3 samtidigt.
+
+
+ÖVRIGT ATT GÖRA SENARE
+----------------------
+- Uppdatera CLAUDE.md med de 8 ändringarna (och avsnittet "Att provspela" har gamla siffror).
+- __pycache__/ följer med i git. Lägg till en .gitignore?
+- SHOW_AI_MEMORY och SHOW_AI_HAND i terminal_ui.py ska sättas till False när spelet är klart.
+- Idé: låt datorn lära sig hur ofta just du bluffar (i dag antar bluff_chance att man bluffar
+  varannan gång när inget kort passar).

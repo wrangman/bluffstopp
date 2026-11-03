@@ -90,20 +90,25 @@ class AIPlayer(Player):
 
    # ---------- välja drag ----------
 
-   def choose_move(self, top, seconds, opponent_cards):
+   def choose_move(self, top, seconds, opponent_cards, deck_left):
       # ger tillbaka (position, kortet han säger) eller None om han säger pass
       # han går igenom alla drag han kan göra, ger varje drag poäng och väljer det bästa.
-      # seconds är hur länge han har tänkt, opponent_cards hur många kort motståndaren har
+      # seconds är hur länge han har tänkt, opponent_cards hur många kort motståndaren har,
+      # deck_left hur många kort som är kvar i leken
       nerves = self.nerves(seconds)
       best_move = None
       best_score = None
 
       if top is not None:  # på tomt bord får man inte passa
-         best_score = self.score_pass(opponent_cards) + self.noise()
+         best_score = self.score_pass(opponent_cards, deck_left) + self.noise()
 
       for i in range(len(self.hand)):
+         # slumpen läggs per kort och inte per påstående. annars får ett kort med många
+         # möjliga bluffar fler "lotter", och bluffar vinner oftare än poängen säger
+         card_noise = self.noise()
          for claim in self.possible_claims(self.hand[i], top):
-            score = self.score_move(i, claim, top, nerves, opponent_cards) + self.noise()
+            score = self.score_move(i, claim, top, nerves, opponent_cards, deck_left)
+            score = score + card_noise + random.uniform(-0.1, 0.1)  # lite slump i vad han säger
             if best_score is None or score > best_score:
                best_score = score
                best_move = (i, claim)
@@ -137,11 +142,21 @@ class AIPlayer(Player):
 
       return claims
 
-   def score_pass(self, opponent_cards):
-      # pass: han drar ett kort och motståndaren får börja om med vilket kort som helst
-      return -1 - self.free_start_value(opponent_cards)
+   def score_pass(self, opponent_cards, deck_left):
+      # pass: han drar ett kort (om leken inte är slut) och motståndaren får börja om
+      if deck_left > 0:
+         draw = 1
+      else:
+         draw = 0
+      return -draw - self.free_start_value(opponent_cards)
 
-   def score_move(self, index, claim, top, nerves, opponent_cards):
+   def penalty_cost(self, deck_left):
+      # hur många kort det kostar att ha fel vid bluffstopp
+      if deck_left == 0:
+         return 2  # man tar ett kort från motståndaren: själv ett kort mer och motståndaren ett mindre
+      return min(3, deck_left)
+
+   def score_move(self, index, claim, top, nerves, opponent_cards, deck_left):
       # poäng för att lägga kortet på index och säga claim, när top ligger på bordet
       card = self.hand[index]
       rest = self.hand[:index] + self.hand[index + 1:]  # handen efter draget
@@ -150,9 +165,10 @@ class AIPlayer(Player):
          score = 10  # han går ut
       else:
          score = 1  # ett kort mindre
-         score = score + self.stop_value(claim) * 0.5 * (1 + self.free_start_value(len(rest)))
+         stop = self.stop_value(claim, opponent_cards)
+         score = score + stop * 0.5 * (1 + self.free_start_value(len(rest)))
          # blockera: ju färre kort motståndaren har, desto viktigare att han inte kan lägga på
-         score = score + self.stop_value(claim) * 2.5 / max(opponent_cards, 1)
+         score = score + stop * 2.5 / max(opponent_cards, 1)
          score = score + self.dump_value(card, rest)
          score = score + self.follow_value(claim, rest)
          # bluffa med ett kort som kunde ha sparats kostar. på tomt bord kostar det inget,
@@ -161,11 +177,15 @@ class AIPlayer(Player):
             score = score - self.waste_value(card, top, rest)
 
       if card.same_as(claim):
-         return score  # ärligt, ingen risk
+         # ärligt, ingen risk. säger motståndaren ändå bluffstopp får motståndaren straffet
+         # och han börjar om. det händer ibland, så det är värt lite
+         if len(rest) > 0:
+            score = score + 0.15 * (self.penalty_cost(deck_left) + self.free_start_value(len(rest)))
+         return score
 
-      # bluff: blir han synad drar han 3 kort och motståndaren får börja om
+      # bluff: blir han synad får han straffet och motståndaren får börja om
       risk = self.call_risk(len(rest), nerves, top is None, claim, opponent_cards)
-      caught = 1 - 3 - self.free_start_value(opponent_cards)
+      caught = 1 - self.penalty_cost(deck_left) - self.free_start_value(opponent_cards)
       return (1 - risk) * score + risk * caught
 
    def free_start_value(self, cards_left):
@@ -175,19 +195,24 @@ class AIPlayer(Player):
          return 10
       return 3 / cards_left
 
-   def stop_value(self, claim):
-      # hur svårt det är för motståndaren att lägga på claim. 0 = lätt, 1 = omöjligt
-      # räknar kort som skulle passa och som han inte vet var de är (högst 15, på en tvåa)
-      count = 0
+   def stop_value(self, claim, opponent_cards):
+      # chansen att motståndaren inte kan lägga något på claim. 0 = kan säkert, 1 = kan inte
+      # räknar kort han inte vet var de är, och hur många av dem som skulle passa
+      fits = 0
+      unknown = 0
       for suit in suits:
          for value in card_ranks:
-            other = Card(suit, value)
-            if other.can_follow(claim) and not self.is_known(suit, value):
-               if self.probably_missing(other):
-                  count = count + 0.5  # motståndaren passade på den färgen, så kortet är mindre troligt
+            if self.is_known(suit, value):
+               continue
+            unknown = unknown + 1
+            if Card(suit, value).can_follow(claim):
+               if self.probably_missing(Card(suit, value)):
+                  fits = fits + 0.5  # motståndaren passade på den färgen, så kortet är mindre troligt
                else:
-                  count = count + 1
-      return 1 - count / 15
+                  fits = fits + 1
+
+      # ju fler kort motståndaren har, desto troligare att något av dem passar
+      return (1 - fits / max(unknown, 1)) ** opponent_cards
 
    def dump_value(self, card, rest):
       # hur skönt det är att bli av med card. låga kort kan nästan bara läggas på tomt bord,
@@ -216,12 +241,26 @@ class AIPlayer(Player):
       return False
 
    def follow_value(self, claim, rest):
-      # kort han har kvar som kan läggas efter claim, så han kan fortsätta serien
-      count = 0
-      for other in rest:
-         if other.can_follow(claim):
-            count = count + 1
-      return min(count, 2) * 0.3
+      # kan han lägga på det motståndaren svarar med? går igenom alla kort motståndaren
+      # kan svara med på claim, och räknar hur många av dem han kan följa med något kort i rest
+      answers = 0
+      covered = 0
+      for suit in suits:
+         for value in card_ranks:
+            if self.is_known(suit, value):
+               continue  # kort han har eller vet är spelade kan motståndaren inte svara med
+            answer = Card(suit, value)
+            if not answer.can_follow(claim):
+               continue
+            answers = answers + 1
+            for other in rest:
+               if other.can_follow(answer):
+                  covered = covered + 1
+                  break
+
+      if answers == 0:
+         return 0  # motståndaren kan inte svara alls, det räknas redan i stop_value
+      return covered / answers * 0.6
 
    def call_risk(self, cards_after, nerves, empty_table, claim, opponent_cards):
       # hur troligt han tror det är att motståndaren säger bluffstopp på claim
@@ -242,6 +281,8 @@ class AIPlayer(Player):
       # hur troligt det är att motståndaren vet att claim är en bluff
       if self.has_card(claim.suit, claim.value):
          return 0  # han har kortet själv, så motståndaren kan inte ha det
+      if self.has_claimed(claim.suit, claim.value):
+         return 0.8  # motståndaren har själv sagt det kortet, och oftast var det sant
       if self.has_seen(claim.suit, claim.value):
          return 0.2  # kortet är redan spelat, motståndaren kanske minns det
 
@@ -287,9 +328,19 @@ class AIPlayer(Player):
          return random.random() < 0.85
 
       chance = self.bluff_chance(top_before, human_cards_left)
+
+      # människan har passat på ett lägre kort i samma färg och har nog inga högre där
+      if self.probably_missing(claim):
+         chance = chance + 0.4
+
       # människan är nära att vinna. men ett lågt kort (2-7) är oftast ärligt, så då litar han på det
       if human_cards_left <= 2 and claim.rank() > 7:
          chance = chance + 0.2
+
+      # kan han inte lägga något själv är pass eller bluff dyrt, så då vågar han lite mer.
+      # gånger och inte plus: utan något skäl att misstänka blir det fortfarande lite
+      if len(self.valid_cards(claim)) == 0:
+         chance = chance * 1.5
 
       if random.random() < chance:
          return True

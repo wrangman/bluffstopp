@@ -162,7 +162,7 @@ class Game:
 
    def ai_move(self, seconds):
       # datorn lägger ett kort eller säger pass efter att ha tänkt i seconds sekunder. ger tillbaka text
-      move = self.ai.choose_move(self.claim, seconds, self.human.cards_left())
+      move = self.ai.choose_move(self.claim, seconds, self.human.cards_left(), self.deck.cards_left())
 
       if move is None:
          return self.pass_turn()
