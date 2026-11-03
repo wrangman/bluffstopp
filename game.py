@@ -153,6 +153,9 @@ class Game:
 
       text = f"{caller.name} säger bluffstopp! {laid_by.name} sa {self.claim} och kortet var {self.last_card}. "
 
+      if caller == self.ai:
+         self.ai.remember_call(not self.last_card.same_as(self.claim))  # hade han rätt eller fel?
+
       if self.last_card.same_as(self.claim):
          text = text + "Det stämde! " + self.penalty(caller, laid_by) + " "
          text = text + self.new_sequence(laid_by)  # den som la ärligt får turen igen

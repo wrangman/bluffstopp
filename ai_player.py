@@ -11,8 +11,16 @@ class AIPlayer(Player):
       self.seen_cards = []    # kort han vet redan är spelade
       self.claimed_cards = [] # kort människan har sagt utan att han sa bluffstopp
       self.passed_on = []     # kort som låg på bordet när människan sa pass
+      self.wrong_calls = 0    # hur många gånger i rad han har synat ett ärligt kort
 
    # ---------- minnet ----------
+
+   def remember_call(self, was_bluff):
+      # efter hans bluffstopp: hade han fel blir han försiktigare, hade han rätt vågar han igen
+      if was_bluff:
+         self.wrong_calls = 0
+      else:
+         self.wrong_calls = self.wrong_calls + 1
 
    def remember_pass(self, card):
       # människan passade på card och har nog inga högre kort i den färgen
@@ -63,6 +71,7 @@ class AIPlayer(Player):
       self.seen_cards = []  # ny omgång, ny lek
       self.claimed_cards = []
       self.passed_on = []
+      self.wrong_calls = 0
 
    def has_seen(self, suit, value):
       for card in self.seen_cards:
@@ -323,11 +332,13 @@ class AIPlayer(Player):
       if human_cards_left == 0:
          return True
 
-      # har människan redan sagt det kortet är minst en av gångerna bluff
-      if self.has_claimed(claim.suit, claim.value):
-         return random.random() < 0.85
-
       chance = self.bluff_chance(top_before, human_cards_left)
+
+      # har människan redan sagt det kortet är en av gångerna bluff, men det kan lika gärna ha
+      # varit förra gången. han jämför chansen nu med en vanlig gång (ungefär 0.3).
+      # på tomt bord fanns det ingen anledning att ljuga nu, så då var det nog förra gången
+      if self.has_claimed(claim.suit, claim.value):
+         chance = chance / (chance + 0.3)
 
       # människan har passat på ett lägre kort i samma färg och har nog inga högre där
       if self.probably_missing(claim):
@@ -341,6 +352,9 @@ class AIPlayer(Player):
       # gånger och inte plus: utan något skäl att misstänka blir det fortfarande lite
       if len(self.valid_cards(claim)) == 0:
          chance = chance * 1.5
+
+      # har han haft fel när han synat blir han försiktigare, hälften så ofta för varje gång
+      chance = chance * 0.5 ** self.wrong_calls
 
       if random.random() < chance:
          return True
