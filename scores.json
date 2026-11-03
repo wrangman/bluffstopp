@@ -1,9 +1,23 @@
 {
    "Spelare 1": {
-      "wins": 11,
-      "losses": 7,
+      "wins": 19,
+      "losses": 15,
       "streak": 1,
       "best_streak": 5,
-      "last_played": 1793699234
+      "last_played": 1793704849
+   },
+   "Johan": {
+      "wins": 7,
+      "losses": 8,
+      "streak": 0,
+      "best_streak": 3,
+      "last_played": 1793709740
+   },
+   "didi": {
+      "wins": 1,
+      "losses": 0,
+      "streak": 1,
+      "best_streak": 1,
+      "last_played": 1793705622
    }
 }

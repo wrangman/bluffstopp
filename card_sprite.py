@@ -42,6 +42,7 @@ class CardSprite:
       self.want_face_up = False  # vilken sida som ska synas
       self.flip = 0              # 0 = vänds inte, annars hur långt vändningen har kommit (0-1)
       self.delay = 0             # sekunder innan kortet börjar röra sig
+      self.flip_wait = 0         # sekunder innan framsidan får vändas upp, så handen vänds i jämn takt
 
       # bara för kort på bordet
       self.open_on_table = False  # vänds upp när någon synar kortet
@@ -57,6 +58,8 @@ class CardSprite:
       return self.delay <= 0 and self.distance_to_target() > 60
 
    def update(self, dt):
+      if self.flip_wait > 0:
+         self.flip_wait = self.flip_wait - dt
       if self.delay > 0:
          self.delay = self.delay - dt
          return
@@ -78,8 +81,8 @@ class CardSprite:
          if self.flip >= 1:
             self.flip = 0
       elif self.face_up != self.want_face_up:
-         # baksidan vänds upp direkt, framsidan först när kortet är framme
-         if not self.want_face_up or self.distance_to_target() < 40:
+         # baksidan vänds upp direkt, framsidan först när kortet är framme och har väntat klart
+         if not self.want_face_up or (self.distance_to_target() < 40 and self.flip_wait <= 0):
             self.flip = 0.01
 
    def draw(self, screen):

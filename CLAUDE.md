@@ -35,10 +35,10 @@ python3 main.py terminal  # alltid terminalen
 - `terminal_ui.py` – `TerminalUI`: ritar bordet, läser in val och kör spelloopen (`run()`). `SHOW_AI_MEMORY` och `SHOW_AI_HAND` högst upp visar datorns minne och hand ovanför bordet för felsökning. Sätt dem till `False` när spelet är klart.
 - `graphic_ui.py` – `GraphicUI` (pygame-ce): fönster 1280×800 som går att skala. Turordningen i `next_step()` följer `TerminalUI.run()` exakt. Datorns väntan är en tidpunkt (`wait_until`), inte `time.sleep`, så fönstret fryser inte. Lägen i `self.state`: `name`, `human`, `ai_bluff_wait`, `ai_wait`, `reveal`, `round_over`.
   - **Animationer:** `sync_sprites()` jämför korten på skärmen med `Game` efter varje drag. Kort som bytt plats flyger dit, nya kort kommer från leken och kort som försvunnit sopas ut till vänster. `Game` behöver inte veta något om animationer.
-  - **Handen:** solfjäder (`fan()`), sorterad efter färg och valör. Mellanrummet krymper med fler kort. Valt kort lyfts 40 px, kortet under musen 16 px.
-  - **Bluffpanel:** när ett kort är valt visas det riktiga kortet först (grön ram = ärligt), sedan förslag (`suggested_claims`) och knappen "Alla…" med alla 52 kort (otillåtna gråa). Man kan också skriva en kod som i terminalen. Klick på samma kort igen eller Enter = ärligt.
+  - **Handen:** solfjäder (`fan()`), sorterad efter färg (♥ ♠ ♦ ♣, röd och svart om vartannat) och valör. Korten delas ut och vänds från vänster till höger i jämn takt (`flip_wait`). Mellanrummet krymper med fler kort. Valt kort lyfts 40 px, kortet under musen 16 px.
+  - **Bluffpanel:** när ett kort är valt visas det riktiga kortet först (grön ram = ärligt), sedan förslag (`suggested_claims`) och en liten hög kort, "Välj kort", med alla 52 kort (otillåtna gråa). Man kan också skriva en kod som i terminalen. Klick på samma kort igen eller Enter = ärligt.
   - **Startskärmen:** flera användare som i Windows, men i spelets egen design (`draw_player_list()`): en vit panel med en rad per spelare, en rund bricka med första bokstaven, mörk ram på vald rad och grå rad under musen. Vald "Ny spelare" blir samma namnruta som när ingen spelat. Pilarna eller klick väljer, klick på valt namn igen eller Enter spelar. Skriver man något hoppar man till "Ny spelare".
-  - **Layout (Johans design):** ingen egen titelrad, fönstrets rad räcker. Leken till vänster om mittkortet. Mittkortet ligger alltid med baksidan upp och rakt (lite huller om buller men aldrig snett), med "?" i hörnet och "Datorn sa: …" under. Till höger: poängrutan ("Johan vs Datorn", "Visa" = topplistan från `scores.json`, "Starta om") och händelserna.
+  - **Layout (Johans design):** ingen egen titelrad, fönstrets rad räcker. Leken till vänster om mittkortet. Mittkortet ligger alltid med baksidan upp och rakt (lite huller om buller men aldrig snett), med "?" i hörnet (på ditt eget kort bara om du bluffade) och "Datorn sa: …" under. Till höger: poängrutan ("Johan vs Datorn", ställningen och under den knapparna "Visa" = topplistan från `scores.json`, "Starta om" och "Byt användare" = tillbaka till startskärmen) och händelserna.
   - **Vems tur:** datorns hand blir större och tydlig på hans tur, mindre och genomskinlig på din (`AI_SCALE`, `ALPHA`). Din hand ändrar aldrig storlek eller genomskinlighet.
   - **Klicka på bordet:** mittkortet = syna (bara på datorns kort), leken = pass. Musen över dem gör kortet större, tonar ned det och visar "Syna kort" / "Pass – dra kort" ovanför. Kortet som synas blir större när det vänds.
   - **Händelser:** chevronen stänger listan så bara det senaste syns ("hard mode"). Öppen lista går att scrolla.
@@ -72,7 +72,7 @@ python3 main.py terminal  # alltid terminalen
 
 ## Inmatning i grafiken
 
-- Klicka på ett kort för att välja det, och klicka igen (eller Enter) för att lägga det ärligt. Bluffa genom att klicka i panelen, under "Alla…" eller genom att skriva en kod + Enter. Esc ångrar.
+- Klicka på ett kort för att välja det, och klicka igen (eller Enter) för att lägga det ärligt. Bluffa genom att klicka i panelen, under "Välj kort" eller genom att skriva en kod + Enter. Esc ångrar.
 - Tangenter när inget kort är valt: `1`–`9` väljer kort, `P` = pass, `B` = bluffstopp.
 - Lägger datorn sitt sista kort kan man bara välja Bluffstopp! eller Godta.
 

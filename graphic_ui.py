@@ -27,17 +27,19 @@ DARK = (28, 30, 34)
 TABLE_X = 430     # mitten av bordet till vänster
 AI_HAND_Y = 90
 PILE_X = 430
-PILE_Y = 296
+PILE_Y = 326      # lite närmare din hand
 DECK_X = 170      # leken ligger till vänster om mittkortet
-DECK_Y = 296
+DECK_Y = 326
 HAND_Y = 668
-BUTTON_Y = 498   # Pass och Bluffstopp ovanför handen
+BUTTON_Y = 528   # Pass och Bluffstopp ovanför handen
 RIGHT_X = 796     # spalten till höger med poängen och händelserna. 24 px luft till kanten, som nedtill
 RIGHT_W = 460
 MINI_W = 52       # små kort i panelen där man väljer vad man säger
 MINI_H = 76
+SCORE_H = 146         # poängrutan uppe till höger
+SCORE_BUTTON_Y = 132  # knapparna under ställningen
 LOG_BOTTOM = 776
-LOG_OPEN_TOP = 140
+LOG_OPEN_TOP = 24 + SCORE_H + 16
 
 # listan med spelare på startskärmen
 RECENT_COUNT = 5     # så många av de senaste spelarna syns
@@ -56,7 +58,7 @@ BOLD_FONTS = "centurygothicfet,segoeuisemibold,arial"
 ITALIC_FONTS = "centurygothickursiv,segoeui,arial"
 SYMBOL_FONTS = "segoeuisymbol,dejavusans,arial"
 
-suit_order = ["♠", "♥", "♣", "♦"]
+suit_order = ["♥", "♠", "♦", "♣"]  # hjärter, spader, ruter, klöver: röd och svart om vartannat
 value_order = [2, 3, 4, 5, 6, 7, 8, 9, 10, "J", "Q", "K", "A"]
 
 
@@ -88,11 +90,14 @@ class Button:
          color = (172, 172, 178)
       else:
          # skuggan stannar kvar när knappen lyfts, så det ser ut som att den kommer upp mot musen
+         # under en vit knapp syns skuggan mycket mer än under den röda, så den görs svagare där
          shadow = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-         if hover:
-            shadow_alpha = 50
-         else:
+         if self.style == "primary":
             shadow_alpha = 30
+         else:
+            shadow_alpha = 12
+         if hover:
+            shadow_alpha = shadow_alpha + 20
          pygame.draw.rect(shadow, (0, 0, 0, shadow_alpha), shadow.get_rect(), border_radius=radius)
          screen.blit(shadow, (self.rect.x, self.rect.y + 3))
 
@@ -123,6 +128,7 @@ class GraphicUI:
       CardSprite.load_images()
       self.layer = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)  # för att tona ned en hel hand på en gång
       self.deck_images = {}
+      self.mini_stack = None  # den lilla högen "Välj kort" i bluffpanelen
 
       self.font = pygame.font.SysFont(TEXT_FONTS, 16)
       self.symbol_font = pygame.font.SysFont(SYMBOL_FONTS, 16)
@@ -185,14 +191,15 @@ class GraphicUI:
 
       self.pass_button = Button("Pass", TABLE_X - 85, BUTTON_Y, 150, 44, "secondary")
       self.bluff_button = Button("Bluffstopp!", TABLE_X + 85, BUTTON_Y, 150, 44, "primary")
-      # i poängrutan, med samma luft till höger som till vänster
-      restart_x = RIGHT_X + RIGHT_W - 26 - 46
-      self.restart_button = Button("Starta om", restart_x, 94, 92, 34, "small")
-      self.scores_button = Button("Visa", restart_x - 46 - 6 - 28, 94, 56, 34, "small")
+      # i poängrutan, på en rad under ställningen. börjar med samma luft till vänster som texten
+      x = RIGHT_X + 26
+      self.scores_button = Button("Visa", x + 28, SCORE_BUTTON_Y, 56, 34, "small")
+      x = x + 56 + 6
+      self.restart_button = Button("Starta om", x + 46, SCORE_BUTTON_Y, 92, 34, "small")
+      x = x + 92 + 6
+      self.switch_button = Button("Byt användare", x + 64, SCORE_BUTTON_Y, 128, 34, "small")
       self.start_button = Button("Spela", WIDTH // 2, 470, 160, 46, "primary")
-      if len(self.players) > 0:
-         box, rows = self.name_list_rects()
-         self.start_button.rect.centery = box.bottom + 52  # under listan
+      self.place_start_button()
       self.again_button = Button("Ny omgång", WIDTH // 2 - 90, 500, 160, 44, "primary")
       self.end_button = Button("Avsluta", WIDTH // 2 + 90, 500, 160, 44, "secondary")
 
@@ -370,6 +377,37 @@ class GraphicUI:
       self.add_message(self.game.start_message)
       self.new_deal()
 
+   def switch_player(self):
+      # tillbaka till startskärmen. omgången som pågår räknas inte, som vid omstart
+      self.game = None
+      self.state = "name"
+      self.messages = []
+      self.hand_sprites = []
+      self.ai_sprites = []
+      self.pile_sprites = []
+      self.leaving_sprites = []
+      self.pile_cards = []
+      self.selected = None
+      self.hovered = None
+      self.code_text = ""
+      self.error_text = ""
+      self.show_grid = False
+      self.show_scores = False
+      self.name_text = ""
+      # läs filen igen så listan och ställningen kommer med omgångarna som just spelats
+      self.scoreboard = Scoreboard()
+      self.players = self.scoreboard.recent_players(RECENT_COUNT)
+      self.choice = 0
+      self.place_start_button()
+
+   def place_start_button(self):
+      # "Spela" ligger under listan med spelare, eller under namnrutan om ingen har spelat
+      if len(self.players) > 0:
+         box, rows = self.name_list_rects()
+         self.start_button.rect.centery = box.bottom + 52
+      else:
+         self.start_button.rect.centery = 470
+
    # ---------- korten på skärmen ----------
 
    def sync_sprites(self):
@@ -387,7 +425,10 @@ class GraphicUI:
       self.pile_sprites = self.keep_sprites(self.pile_sprites, self.pile_cards, free)
 
       self.next_delay = 0
-      self.add_sprites(self.hand_sprites, game.human.hand, free)
+      # dina kort delas ut i samma ordning som de syns, så de kommer och vänds från vänster till höger
+      new_cards = self.add_sprites(self.hand_sprites, sorted(game.human.hand, key=self.card_order), free)
+      for sprite in new_cards:
+         sprite.flip_wait = sprite.delay + 0.4  # alla hinner landa, sen vänds de i jämn takt
       self.add_sprites(self.ai_sprites, game.ai.hand, free)
       added = self.add_sprites(self.pile_sprites, self.pile_cards, free)
       for sprite in added:
@@ -461,9 +502,12 @@ class GraphicUI:
             return i
       return -1
 
-   def hand_order(self, sprite):
+   def card_order(self, card):
       # sortera handen efter färg och sen valör
-      return suit_order.index(sprite.card.suit) * 100 + sprite.card.rank()
+      return suit_order.index(card.suit) * 100 + card.rank()
+
+   def hand_order(self, sprite):
+      return self.card_order(sprite.card)
 
    def hand_sprite_at(self, pos):
       # det valda kortet sticker upp, så det kollas först. sen uppifrån och ned i högen
@@ -720,6 +764,9 @@ class GraphicUI:
       if self.restart_button.contains(pos):
          self.restart()
          return
+      if self.switch_button.contains(pos):
+         self.switch_player()
+         return
       if self.log_header_rect().collidepoint(pos):
          self.log_open = not self.log_open
          self.log_scroll = 0
@@ -974,7 +1021,7 @@ class GraphicUI:
 
    def draw_score_panel(self):
       game = self.game
-      panel = pygame.Rect(RIGHT_X, 24, RIGHT_W, 100)
+      panel = pygame.Rect(RIGHT_X, 24, RIGHT_W, SCORE_H)
       self.draw_panel(panel)
 
       name = game.human.name
@@ -990,10 +1037,11 @@ class GraphicUI:
       wins = game.scoreboard.wins(name)
       losses = game.scoreboard.losses(name)
       score = self.font.render(f"Aktuell poängställning: {wins} – {losses}", True, TEXT)
-      self.screen.blit(score, score.get_rect(midleft=(panel.x + 26, self.scores_button.rect.centery)))
+      self.screen.blit(score, score.get_rect(midleft=(panel.x + 26, panel.y + 68)))
 
       self.scores_button.draw(self.screen, self.button_font, True)
       self.restart_button.draw(self.screen, self.button_font, True)
+      self.switch_button.draw(self.screen, self.button_font, True)
 
    def log_target_top(self):
       if self.log_open:
@@ -1088,18 +1136,18 @@ class GraphicUI:
       count = self.small_font.render(f"({len(self.ai_sprites)} kort kvar)", True, TEXT)
       self.screen.blit(count, count.get_rect(center=(TABLE_X, 181)))
 
-      # du: "Johan (6)" under handen
+      # du: "Johan (6)" under handen. underkanten i linje med rutan med händelserna
       name = self.bold_font.render(game.human.name, True, TEXT)
       count = self.font.render(f" ({len(self.hand_sprites)})", True, TEXT)
       x = TABLE_X - (name.get_width() + count.get_width()) // 2
-      self.screen.blit(name, (x, 780 - name.get_height() // 2))
-      self.screen.blit(count, (x + name.get_width(), 780 - count.get_height() // 2))
+      self.screen.blit(name, name.get_rect(bottomleft=(x, LOG_BOTTOM)))
+      self.screen.blit(count, count.get_rect(bottomleft=(x + name.get_width(), LOG_BOTTOM)))
 
       # leken
       label = self.font.render("Kortlek", True, TEXT)
-      self.screen.blit(label, label.get_rect(center=(DECK_X, 384)))
+      self.screen.blit(label, label.get_rect(center=(DECK_X, DECK_Y + 88)))
       count = self.font.render(f"({self.game.deck.cards_left()} kort kvar)", True, GRAY)
-      self.screen.blit(count, count.get_rect(center=(DECK_X, 406)))
+      self.screen.blit(count, count.get_rect(center=(DECK_X, DECK_Y + 110)))
 
       # bordet. när ett kort vänds är bordet redan tomt i Game, men kortet ligger kvar på skärmen
       if self.state == "reveal":
@@ -1117,11 +1165,11 @@ class GraphicUI:
          if game.last_player is None:
             text = f"Från leken: {game.claim}"
          elif game.last_player == game.human:
-            text = f"Du sa: {game.claim} ?"
+            text = f"Du sa: {game.claim}"
          else:
-            text = f"{game.ai.name} sa: {game.claim} ?"
+            text = f"{game.ai.name} sa: {game.claim}"
          words = self.render_words(text, self.claim_font, self.claim_symbol_font, TEXT)
-      self.draw_line(words, PILE_X, 384, True)
+      self.draw_line(words, PILE_X, PILE_Y + 88, True)
 
    def deck_image(self, layers):
       # leken ritas som några baksidor på varandra. sparas så det inte görs varje bild
@@ -1227,7 +1275,12 @@ class GraphicUI:
       if self.pile_hover:
          self.draw_card_hover(rect, "Syna kort")
 
-      if self.game.claim is not None and self.game.last_player is not None and not top.face_up:
+      # på ditt eget kort syns frågetecknet bara om du bluffade
+      show_mark = self.game.claim is not None and self.game.last_player is not None and not top.face_up
+      if show_mark and self.game.last_player == self.game.human:
+         if self.game.last_card.same_as(self.game.claim):
+            show_mark = False
+      if show_mark:
          center = (rect.right - 4, rect.y + 4)
          pygame.draw.circle(self.screen, WHITE, center, 18)
          pygame.draw.circle(self.screen, DARK, center, 16)
@@ -1264,7 +1317,7 @@ class GraphicUI:
       else:
          text = "Din tur – välj ett kort"
       label = self.bold_font.render(text, True, color)
-      self.screen.blit(label, label.get_rect(center=(TABLE_X, 450)))
+      self.screen.blit(label, label.get_rect(center=(TABLE_X, BUTTON_Y - 48)))
 
    def draw_thinking(self):
       # en pratbubbla till vänster om datorns hand
@@ -1299,7 +1352,7 @@ class GraphicUI:
       items = []
       for group in groups:
          for card in group:
-            rect = pygame.Rect(x, 438, MINI_W, MINI_H)
+            rect = pygame.Rect(x, 468, MINI_W, MINI_H)
             items.append([rect, card])
             x = x + MINI_W + 8
          x = x + 16
@@ -1308,7 +1361,7 @@ class GraphicUI:
    def all_cards_rect(self):
       items = self.panel_items()
       last = items[len(items) - 1][0]
-      return pygame.Rect(last.right + 12, last.centery - 20, 92, 40)
+      return pygame.Rect(last.right + 12, last.y, 80, MINI_H)
 
    def draw_claim_panel(self):
       items = self.panel_items()
@@ -1347,12 +1400,24 @@ class GraphicUI:
             else:
                self.dim(rect.x, y)
 
-      # knappen för alla kort
+      # knappen för alla kort: en liten hög med baksidor och "Välj kort" under
+      y = button.y
       if button.collidepoint(mouse):
-         pygame.draw.rect(self.screen, (232, 232, 236), button, border_radius=20)
-      pygame.draw.rect(self.screen, DARK, button, 2, border_radius=20)
-      label = self.button_font.render("Alla…", True, DARK)
-      self.screen.blit(label, label.get_rect(center=button.center))
+         y = y - 5  # lyfts som de andra korten
+      stack = self.mini_stack_image()
+      self.screen.blit(stack, stack.get_rect(midtop=(button.centerx, y)))
+      label = self.small_font.render("Välj kort", True, DARK)
+      self.screen.blit(label, label.get_rect(midbottom=(button.centerx, y + MINI_H + 2)))
+
+   def mini_stack_image(self):
+      # tre små baksidor på varandra. sparas så det inte görs varje bild
+      if self.mini_stack is None:
+         back = pygame.transform.smoothscale(CardSprite.back, (38, 54))
+         self.mini_stack = pygame.Surface((back.get_width() + 6, back.get_height() + 6), pygame.SRCALPHA)
+         for i in range(3):
+            offset = (2 - i) * 3
+            self.mini_stack.blit(back, (6 - offset, 6 - offset))
+      return self.mini_stack
 
    def grid_rect(self):
       rect = pygame.Rect(0, 0, 820, 440)
@@ -1403,8 +1468,11 @@ class GraphicUI:
          color = RED
       else:
          color = GREEN
+      # rutan svävar över nedre kanten på kortet som synas (skala 1.3) men täcker
+      # högst en fjärdedel, så hela överdelen av kortet syns
+      card_bottom = PILE_Y + int(CARD_H * 1.3) // 2
       box = pygame.Rect(0, 0, 620, 110)
-      box.midtop = (TABLE_X, 412)
+      box.midtop = (TABLE_X, card_bottom - 40)
       pygame.draw.rect(self.screen, WHITE, box, border_radius=18)
       pygame.draw.rect(self.screen, color, box, 3, border_radius=18)
       title = self.big_font.render(self.reveal_title, True, color)
