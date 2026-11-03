@@ -2,6 +2,7 @@ import os
 import subprocess
 import time
 from card import Card
+from scoreboard import Scoreboard
 
 SHOW_AI_MEMORY = True  # felsökning: visa vad datorn kommer ihåg.
 SHOW_AI_HAND = True  # felsökning: visa datorns hand.
@@ -15,6 +16,42 @@ class TerminalUI:
       self.ai_played = None                   # felsökning: kortet han faktiskt la, None om han passade
 
       self.add_message(game.start_message)  # visa kortet som lades från leken
+
+   @staticmethod
+   def ask_name():
+      # frågar vem som spelar innan spelet finns. har någon spelat förut väljer man i en lista
+      scoreboard = Scoreboard()
+      players = scoreboard.recent_players(5)
+      if len(players) == 0:
+         name = input("Vad heter du? ").strip()
+         if name == "":
+            name = "Spelare 1"
+         return name
+
+      print("========== BLUFFSTOPP ==========")
+      print("Vem spelar?")
+      for i in range(len(players)):
+         name = players[i]
+         info = f"{scoreboard.wins(name)} vunna, {scoreboard.losses(name)} förlorade"
+         print(f"  {i + 1}. {name.ljust(16)} {info}")
+      print(f"  {len(players) + 1}. Ny spelare")
+      print()
+
+      while True:
+         choice = input(f"1-{len(players) + 1} (Enter = 1), eller skriv ett nytt namn: ").strip()
+         if choice == "":
+            return players[0]  # den som spelade senast
+         if not choice.isdigit():
+            return choice  # ett nytt namn
+         number = int(choice)
+         if number >= 1 and number <= len(players):
+            return players[number - 1]
+         if number == len(players) + 1:
+            name = input("Vad heter du? ").strip()
+            if name == "":
+               name = "Spelare 1"
+            return name
+         print("Det finns ingen sådan rad.")
 
    def clear(self):
       subprocess.run('cls' if os.name == 'nt' else 'clear', shell=True)

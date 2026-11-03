@@ -20,7 +20,7 @@ python3 main.py terminal  # alltid terminalen
 
 ## Filer
 
-- `main.py` – väljer grafik eller terminal och startar spelet. Terminalen frågar efter namn med `input`, grafiken i fönstret.
+- `main.py` – väljer grafik eller terminal och startar spelet. Terminalen frågar efter namn med `TerminalUI.ask_name()`, grafiken i fönstret. Båda visar en lista med de 5 som spelat senast plus "Ny spelare". Finns ingen i `scores.json` frågar de bara efter namnet.
 - `card.py` – `Card` (färg + valör) och `card_ranks` (J=11, Q=12, K=13, A=14). `can_follow()` innehåller regeln för vilka kort som får läggas. `Card.from_code("hk")` tolkar koderna man skriver (används av båda gränssnitten).
 - `deck.py` – `Deck`. `make_deck()` och `shuffle_deck()` (egen Fisher–Yates) är statiska. `deal()` kastar fel om korten inte räcker, `draw()` tar så många som finns.
 - `player.py` – `Player` med handen och hjälpmetoder.
@@ -31,12 +31,13 @@ python3 main.py terminal  # alltid terminalen
   - **Väntetid:** `think_time` slumpas *innan* draget. Efter lång väntan (> 2,0 s) är han nervösare (`nerves`) och bluffar mer sällan, utom med 1–2 kort kvar.
   - **Bluffstopp (`wants_to_call_bluff`):** säkra regler först, sedan sannolikheter.
 - `game.py` – `Game`: all spellogik och allt tillstånd. Ingen `print` eller `input` här. `record_result()` ger vinnaren 1 poäng när omgången är slut och lämnar tillbaka en text om rekordet slogs. `score_text()` och `streak_text()` ger ställningen och vinstsviten som text.
-- `scoreboard.py` – `Scoreboard`: människans vunna och förlorade omgångar mot datorn, per namn, plus vinster i rad (`streak`) och rekordet (`best_streak`) att slå. Sparas i `scores.json` i spelmappen efter varje omgång. Datorns poäng är samma sak som människans förluster. Ingen `print` eller `input` här heller, så grafikversionen kan använda samma klass.
+- `scoreboard.py` – `Scoreboard`: människans vunna och förlorade omgångar mot datorn, per namn, plus vinster i rad (`streak`) och rekordet (`best_streak`) att slå. `last_played` (sekunder sedan 1970) sätts när en omgång räknas, och `recent_players()` ger namnen med den senaste först. Sparas i `scores.json` i spelmappen efter varje omgång. Datorns poäng är samma sak som människans förluster. Ingen `print` eller `input` här heller, så grafikversionen kan använda samma klass.
 - `terminal_ui.py` – `TerminalUI`: ritar bordet, läser in val och kör spelloopen (`run()`). `SHOW_AI_MEMORY` och `SHOW_AI_HAND` högst upp visar datorns minne och hand ovanför bordet för felsökning. Sätt dem till `False` när spelet är klart.
 - `graphic_ui.py` – `GraphicUI` (pygame-ce): fönster 1280×800 som går att skala. Turordningen i `next_step()` följer `TerminalUI.run()` exakt. Datorns väntan är en tidpunkt (`wait_until`), inte `time.sleep`, så fönstret fryser inte. Lägen i `self.state`: `name`, `human`, `ai_bluff_wait`, `ai_wait`, `reveal`, `round_over`.
   - **Animationer:** `sync_sprites()` jämför korten på skärmen med `Game` efter varje drag. Kort som bytt plats flyger dit, nya kort kommer från leken och kort som försvunnit sopas ut till vänster. `Game` behöver inte veta något om animationer.
   - **Handen:** solfjäder (`fan()`), sorterad efter färg och valör. Mellanrummet krymper med fler kort. Valt kort lyfts 40 px, kortet under musen 16 px.
   - **Bluffpanel:** när ett kort är valt visas det riktiga kortet först (grön ram = ärligt), sedan förslag (`suggested_claims`) och knappen "Alla…" med alla 52 kort (otillåtna gråa). Man kan också skriva en kod som i terminalen. Klick på samma kort igen eller Enter = ärligt.
+  - **Startskärmen:** flera användare som i Windows, men i spelets egen design (`draw_player_list()`): en vit panel med en rad per spelare, en rund bricka med första bokstaven, mörk ram på vald rad och grå rad under musen. Vald "Ny spelare" blir samma namnruta som när ingen spelat. Pilarna eller klick väljer, klick på valt namn igen eller Enter spelar. Skriver man något hoppar man till "Ny spelare".
   - **Layout (Johans design):** ingen egen titelrad, fönstrets rad räcker. Leken till vänster om mittkortet. Mittkortet ligger alltid med baksidan upp och rakt (lite huller om buller men aldrig snett), med "?" i hörnet och "Datorn sa: …" under. Till höger: poängrutan ("Johan vs Datorn", "Visa" = topplistan från `scores.json`, "Starta om") och händelserna.
   - **Vems tur:** datorns hand blir större och tydlig på hans tur, mindre och genomskinlig på din (`AI_SCALE`, `ALPHA`). Din hand ändrar aldrig storlek eller genomskinlighet.
   - **Klicka på bordet:** mittkortet = syna (bara på datorns kort), leken = pass. Musen över dem gör kortet större, tonar ned det och visar "Syna kort" / "Pass – dra kort" ovanför. Kortet som synas blir större när det vänds.

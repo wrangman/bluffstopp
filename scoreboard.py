@@ -1,5 +1,6 @@
 import json
 import os
+import time
 
 # filen hamnar i samma mapp som spelet, oavsett var man startar det ifrån
 SCORE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scores.json")
@@ -8,7 +9,8 @@ SCORE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scores.js
 class Scoreboard:
    def __init__(self, filename=SCORE_FILE):
       self.filename = filename
-      # namn -> {"wins": vunna, "losses": förlorade, "streak": vinster i rad just nu, "best_streak": rekordet}
+      # namn -> {"wins": vunna, "losses": förlorade, "streak": vinster i rad just nu, "best_streak": rekordet,
+      #         "last_played": när omgången spelades, i sekunder sedan 1970}
       self.scores = {}
       self.load()
 
@@ -30,7 +32,7 @@ class Scoreboard:
       if name not in self.scores:
          self.scores[name] = {}
       # en äldre fil kan sakna några av siffrorna, då börjar de på 0
-      for key in ["wins", "losses", "streak", "best_streak"]:
+      for key in ["wins", "losses", "streak", "best_streak", "last_played"]:
          if key not in self.scores[name]:
             self.scores[name][key] = 0
 
@@ -38,6 +40,7 @@ class Scoreboard:
       # ger tillbaka True om det blev nytt rekord i vinster i rad
       self.add_player(name)
       score = self.scores[name]
+      score["last_played"] = int(time.time())
       score["wins"] = score["wins"] + 1
       score["streak"] = score["streak"] + 1
       if score["streak"] > score["best_streak"]:
@@ -47,6 +50,7 @@ class Scoreboard:
 
    def add_loss(self, name):
       self.add_player(name)
+      self.scores[name]["last_played"] = int(time.time())
       self.scores[name]["losses"] = self.scores[name]["losses"] + 1
       self.scores[name]["streak"] = 0  # förlust = vinstsviten är bruten
 
@@ -75,6 +79,22 @@ class Scoreboard:
          rows.append([name, score["wins"], score["losses"], score["best_streak"]])
       rows.sort(key=Scoreboard.sort_key, reverse=True)
       return rows
+
+   def recent_players(self, count):
+      # namnen på de som spelade senast, den senaste först
+      rows = []
+      for name in self.scores:
+         self.add_player(name)
+         rows.append([name, self.scores[name]["last_played"]])
+      rows.sort(key=Scoreboard.time_key, reverse=True)
+      names = []
+      for row in rows[:count]:
+         names.append(row[0])
+      return names
+
+   @staticmethod
+   def time_key(row):
+      return row[1]
 
    @staticmethod
    def sort_key(row):

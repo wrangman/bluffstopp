@@ -4,6 +4,7 @@ import time
 import pygame
 from card import Card
 from game import Game
+from scoreboard import Scoreboard
 from card_sprite import CardSprite, CARD_W, CARD_H
 
 SHOW_AI_HAND = False  # felsökning: visa datorns kort. F1 slår av och på under spelet
@@ -37,6 +38,12 @@ MINI_W = 52       # små kort i panelen där man väljer vad man säger
 MINI_H = 76
 LOG_BOTTOM = 776
 LOG_OPEN_TOP = 140
+
+# listan med spelare på startskärmen
+RECENT_COUNT = 5     # så många av de senaste spelarna syns
+LIST_TOP = 250
+LIST_W = 420
+LIST_ROW_H = 58
 
 # datorns hand: större och tydligare när det är hans tur. din hand ändras aldrig
 TABLE_SCALE = 0.9
@@ -133,6 +140,11 @@ class GraphicUI:
       self.state = "name"  # "name", "human", "ai_bluff_wait", "ai_wait", "reveal" eller "round_over"
       self.running = True
       self.name_text = ""
+      # de senaste spelarna från scores.json. choice är raden som är vald,
+      # och raden efter sista namnet är "Ny spelare". finns inga namn är den rad 0
+      self.scoreboard = Scoreboard()
+      self.players = self.scoreboard.recent_players(RECENT_COUNT)
+      self.choice = 0
       self.messages = []   # [text, ord i svart, ord i grått]
 
       # korten på skärmen
@@ -178,6 +190,9 @@ class GraphicUI:
       self.restart_button = Button("Starta om", restart_x, 94, 92, 34, "small")
       self.scores_button = Button("Visa", restart_x - 46 - 6 - 28, 94, 56, 34, "small")
       self.start_button = Button("Spela", WIDTH // 2, 470, 160, 46, "primary")
+      if len(self.players) > 0:
+         box, rows = self.name_list_rects()
+         self.start_button.rect.centery = box.bottom + 52  # under listan
       self.again_button = Button("Ny omgång", WIDTH // 2 - 90, 500, 160, 44, "primary")
       self.end_button = Button("Avsluta", WIDTH // 2 + 90, 500, 160, 44, "secondary")
 
@@ -194,9 +209,12 @@ class GraphicUI:
    # ---------- spelets gång ----------
 
    def start_game(self):
-      name = self.name_text.strip()
-      if name == "":
-         name = "Spelare 1"
+      if self.choice < len(self.players):
+         name = self.players[self.choice]
+      else:
+         name = self.name_text.strip()
+         if name == "":
+            name = "Spelare 1"
       self.game = Game(name)
       self.add_message(f"Spelomgången börjar. {self.game.current.name} börjar.")
       self.add_message(self.game.start_message)
@@ -613,9 +631,18 @@ class GraphicUI:
       if self.state == "name":
          if enter:
             self.start_game()
+         elif event.key == pygame.K_UP:
+            if self.choice > 0:
+               self.choice = self.choice - 1
+         elif event.key == pygame.K_DOWN:
+            if self.choice < len(self.players):
+               self.choice = self.choice + 1
          elif event.key == pygame.K_BACKSPACE:
-            self.name_text = self.name_text[:-1]
+            if self.choice == len(self.players):
+               self.name_text = self.name_text[:-1]
          elif event.unicode != "" and event.unicode.isprintable() and len(self.name_text) < 16:
+            # börjar man skriva hoppar man till "Ny spelare"
+            self.choice = len(self.players)
             self.name_text = self.name_text + event.unicode
          return
 
@@ -673,6 +700,15 @@ class GraphicUI:
       if self.state == "name":
          if self.start_button.contains(pos):
             self.start_game()
+            return
+         if len(self.players) > 0:
+            box, rows = self.name_list_rects()
+            for i in range(len(rows)):
+               if rows[i].collidepoint(pos):
+                  if i == self.choice and i < len(self.players):
+                     self.start_game()  # klick på samma namn igen = spela, som med korten
+                  else:
+                     self.choice = i
          return
 
       if self.show_scores:
@@ -833,6 +869,11 @@ class GraphicUI:
          self.draw_scores()
 
    def draw_name_screen(self):
+      if len(self.players) > 0:
+         self.draw_player_list()
+         return
+
+      # ingen har spelat än: bara en ruta för namnet
       title = self.big_font.render("Bluffstopp", True, RED)
       self.screen.blit(title, title.get_rect(center=(WIDTH // 2, 260)))
       question = self.bold_font.render("Vad heter du?", True, TEXT)
@@ -849,6 +890,83 @@ class GraphicUI:
       self.screen.blit(label, (box.x + 14, box.centery - label.get_height() // 2))
 
       self.start_button.draw(self.screen, self.button_font, True)
+
+   def name_list_rects(self):
+      # panelen med listan, och en ruta per rad. "Ny spelare" är sista raden
+      count = len(self.players) + 1
+      box = pygame.Rect(0, 0, LIST_W, count * LIST_ROW_H + 32)
+      box.midtop = (WIDTH // 2, LIST_TOP)
+      rows = []
+      for i in range(count):
+         y = box.y + 16 + i * LIST_ROW_H
+         rows.append(pygame.Rect(box.x + 16, y, box.width - 32, LIST_ROW_H - 6))
+      return box, rows
+
+   def draw_player_list(self):
+      # som rutan för namnet, fast man väljer bland de som spelat senast
+      title = self.big_font.render("Bluffstopp", True, RED)
+      self.screen.blit(title, title.get_rect(center=(WIDTH // 2, 150)))
+      question = self.bold_font.render("Vem spelar?", True, TEXT)
+      self.screen.blit(question, question.get_rect(center=(WIDTH // 2, 218)))
+
+      box, rows = self.name_list_rects()
+      self.draw_panel(box)
+      mouse = pygame.mouse.get_pos()
+      for i in range(len(rows)):
+         row = rows[i]
+         radius = row.height // 2
+         # vald rad får mörk ram som en knapp under musen, raden under musen blir grå
+         if row.collidepoint(mouse) and i != self.choice:
+            pygame.draw.rect(self.screen, BACKGROUND, row, border_radius=radius)
+         if i == self.choice:
+            pygame.draw.rect(self.screen, DARK, row, 2, border_radius=radius)
+
+         # en rund bricka med första bokstaven, eller + för en ny spelare
+         center = (row.x + 30, row.centery)
+         pygame.draw.circle(self.screen, BACKGROUND, center, 19)
+         pygame.draw.circle(self.screen, BORDER, center, 19, 1)
+         if i < len(self.players):
+            letter = self.title_font.render(self.players[i][0].upper(), True, TEXT)
+         else:
+            letter = self.title_font.render("+", True, GRAY)
+         self.screen.blit(letter, letter.get_rect(center=center))
+
+         x = row.x + 62
+         if i < len(self.players):
+            self.draw_player_row(row, x, self.players[i])
+         else:
+            self.draw_new_player_row(row, x, i == self.choice)
+
+      self.start_button.draw(self.screen, self.button_font, True)
+
+   def draw_player_row(self, row, x, name):
+      label = self.bold_font.render(name, True, TEXT)
+      self.screen.blit(label, (x, row.y + 7))
+      wins = self.scoreboard.wins(name)
+      losses = self.scoreboard.losses(name)
+      info = self.small_font.render(f"{wins} vunna, {losses} förlorade", True, GRAY)
+      self.screen.blit(info, (x, row.y + 29))
+
+   def draw_new_player_row(self, row, x, chosen):
+      if not chosen:
+         label = self.bold_font.render("Ny spelare", True, TEXT)
+         self.screen.blit(label, (x, row.centery - label.get_height() // 2))
+         return
+
+      # vald: raden blir samma ruta för namnet som när ingen har spelat än
+      box = pygame.Rect(x - 6, row.y + 7, row.right - 14 - x, row.height - 14)
+      pygame.draw.rect(self.screen, WHITE, box, border_radius=10)
+      pygame.draw.rect(self.screen, LIGHT_GRAY, box, 2, border_radius=10)
+      blink = int(time.time() * 2) % 2 == 0
+      if self.name_text == "" and not blink:
+         hint = self.font.render("Skriv ditt namn", True, LIGHT_GRAY)
+         self.screen.blit(hint, (box.x + 12, box.centery - hint.get_height() // 2))
+         return
+      text = self.name_text
+      if blink:
+         text = text + "|"  # blinkande markör
+      label = self.claim_font.render(text, True, TEXT)
+      self.screen.blit(label, (box.x + 12, box.centery - label.get_height() // 2))
 
    def draw_panel(self, rect):
       pygame.draw.rect(self.screen, WHITE, rect, border_radius=22)
