@@ -23,19 +23,19 @@ GREEN = (36, 150, 80)
 DARK = (28, 30, 34)
 
 # platser på skärmen
-TABLE_X = 450     # mitten av bordet till vänster
+TABLE_X = 430     # mitten av bordet till vänster
 AI_HAND_Y = 90
-PILE_X = 450
+PILE_X = 430
 PILE_Y = 296
-DECK_X = 190      # leken ligger till vänster om mittkortet
+DECK_X = 170      # leken ligger till vänster om mittkortet
 DECK_Y = 296
-HAND_Y = 660
-BUTTON_Y = 778
-RIGHT_X = 830     # spalten till höger med poängen och händelserna
-RIGHT_W = 420
+HAND_Y = 668
+BUTTON_Y = 498   # Pass och Bluffstopp ovanför handen
+RIGHT_X = 796     # spalten till höger med poängen och händelserna. 24 px luft till kanten, som nedtill
+RIGHT_W = 460
 MINI_W = 52       # små kort i panelen där man väljer vad man säger
 MINI_H = 76
-LOG_BOTTOM = 780
+LOG_BOTTOM = 776
 LOG_OPEN_TOP = 140
 
 # datorns hand: större och tydligare när det är hans tur. din hand ändras aldrig
@@ -58,39 +58,53 @@ class Button:
       self.text = text
       self.rect = pygame.Rect(0, 0, width, height)
       self.rect.center = (x, y)
-      self.style = style  # "filled", "outline" eller "text"
+      self.style = style  # "primary" (röd), "secondary" (vit) eller "small" (liten grå)
 
    def contains(self, pos):
       return self.rect.collidepoint(pos)
 
    def draw(self, screen, font, enabled):
       hover = enabled and self.contains(pygame.mouse.get_pos())
-      radius = self.rect.height // 2
+      rect = self.rect.copy()
+      radius = rect.height // 2
+      if hover:
+         rect.y = rect.y - 2  # knappen lyfts lite under musen
 
-      if self.style == "text":
+      if self.style == "small":
          if hover:
-            color = RED
+            pygame.draw.rect(screen, (226, 228, 232), rect, border_radius=radius)
          else:
-            color = TEXT
+            pygame.draw.rect(screen, BACKGROUND, rect, border_radius=radius)
+         color = TEXT
       elif not enabled:
-         pygame.draw.rect(screen, (230, 230, 233), self.rect, border_radius=radius)
-         color = (170, 170, 176)
-      elif self.style == "filled":
-         if hover:
-            pygame.draw.rect(screen, (62, 64, 72), self.rect, border_radius=radius)
-         else:
-            pygame.draw.rect(screen, DARK, self.rect, border_radius=radius)
-         color = WHITE
+         pygame.draw.rect(screen, (232, 233, 236), rect, border_radius=radius)
+         color = (172, 172, 178)
       else:
+         # skuggan stannar kvar när knappen lyfts, så det ser ut som att den kommer upp mot musen
+         shadow = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
          if hover:
-            pygame.draw.rect(screen, (232, 232, 236), self.rect, border_radius=radius)
+            shadow_alpha = 50
          else:
-            pygame.draw.rect(screen, WHITE, self.rect, border_radius=radius)
-         pygame.draw.rect(screen, DARK, self.rect, 2, border_radius=radius)
-         color = DARK
+            shadow_alpha = 30
+         pygame.draw.rect(shadow, (0, 0, 0, shadow_alpha), shadow.get_rect(), border_radius=radius)
+         screen.blit(shadow, (self.rect.x, self.rect.y + 3))
+
+         if self.style == "primary":
+            if hover:
+               pygame.draw.rect(screen, (238, 74, 74), rect, border_radius=radius)
+            else:
+               pygame.draw.rect(screen, RED, rect, border_radius=radius)
+            color = WHITE
+         else:
+            pygame.draw.rect(screen, WHITE, rect, border_radius=radius)
+            if hover:
+               pygame.draw.rect(screen, DARK, rect, 2, border_radius=radius)
+            else:
+               pygame.draw.rect(screen, LIGHT_GRAY, rect, 2, border_radius=radius)
+            color = DARK
 
       label = font.render(self.text, True, color)
-      screen.blit(label, label.get_rect(center=self.rect.center))
+      screen.blit(label, label.get_rect(center=rect.center))
 
 
 class GraphicUI:
@@ -157,13 +171,15 @@ class GraphicUI:
       self.round_winner = None
       self.record_text = None
 
-      self.pass_button = Button("Pass", TABLE_X - 80, BUTTON_Y, 140, 38, "outline")
-      self.bluff_button = Button("Bluffstopp!", TABLE_X + 80, BUTTON_Y, 150, 38, "filled")
-      self.scores_button = Button("Visa", 1128, 68, 64, 34, "text")
-      self.restart_button = Button("Starta om", 1203, 68, 100, 34, "text")
-      self.start_button = Button("Spela", WIDTH // 2, 470, 160, 46, "filled")
-      self.again_button = Button("Ny omgång", WIDTH // 2 - 90, 500, 160, 44, "filled")
-      self.end_button = Button("Avsluta", WIDTH // 2 + 90, 500, 160, 44, "outline")
+      self.pass_button = Button("Pass", TABLE_X - 85, BUTTON_Y, 150, 44, "secondary")
+      self.bluff_button = Button("Bluffstopp!", TABLE_X + 85, BUTTON_Y, 150, 44, "primary")
+      # i poängrutan, med samma luft till höger som till vänster
+      restart_x = RIGHT_X + RIGHT_W - 26 - 46
+      self.restart_button = Button("Starta om", restart_x, 94, 92, 34, "small")
+      self.scores_button = Button("Visa", restart_x - 46 - 6 - 28, 94, 56, 34, "small")
+      self.start_button = Button("Spela", WIDTH // 2, 470, 160, 46, "primary")
+      self.again_button = Button("Ny omgång", WIDTH // 2 - 90, 500, 160, 44, "primary")
+      self.end_button = Button("Avsluta", WIDTH // 2 + 90, 500, 160, 44, "secondary")
 
    def run(self):
       while self.running:
@@ -694,16 +710,16 @@ class GraphicUI:
 
       # syna genom att klicka på knappen eller på mittkortet
       if self.game.can_call_bluff():
-         if self.bluff_button.contains(pos) or (self.pile_hover and self.pile_sprites[-1].contains(pos)):
+         if (self.buttons_visible() and self.bluff_button.contains(pos)) or (self.pile_hover and self.pile_sprites[-1].contains(pos)):
             self.human_bluff()
             return
       if self.must_answer_last_card():
-         if self.pass_button.contains(pos):
+         if self.buttons_visible() and self.pass_button.contains(pos):
             self.end_round()  # knappen heter Godta just då
          return
       # pass genom att klicka på knappen eller på leken
       if self.game.can_pass():
-         if self.pass_button.contains(pos) or (self.can_click_deck() and self.deck_rect().collidepoint(pos)):
+         if (self.buttons_visible() and self.pass_button.contains(pos)) or (self.can_click_deck() and self.deck_rect().collidepoint(pos)):
             self.human_pass()
             return
 
@@ -792,14 +808,19 @@ class GraphicUI:
       self.draw_log_panel()
       self.draw_table_texts()
       self.draw_deck()
-      self.draw_sprites()
-      self.draw_buttons()
+      moving = self.draw_sprites()
 
-      if self.state == "human" and not self.show_grid:
-         if self.selected is not None:
-            self.draw_claim_panel()
-         else:
-            self.draw_hint()
+      if self.buttons_visible():
+         self.draw_hint()
+         self.draw_buttons()
+      elif self.state == "human" and self.selected is not None and not self.show_grid:
+         self.draw_claim_panel()
+
+      # kort som flyger ritas efter knapparna, annars åker de under dem
+      for sprite in moving:
+         sprite.draw(self.screen)
+      for sprite in self.leaving_sprites:
+         sprite.draw(self.screen)
       if self.state == "ai_wait" or self.state == "ai_bluff_wait":
          self.draw_thinking()
       if self.state == "reveal":
@@ -839,16 +860,19 @@ class GraphicUI:
       self.draw_panel(panel)
 
       name = game.human.name
-      title = self.heading_font.render(f"{name} vs {game.ai.name}", True, TEXT)
-      if title.get_width() > 250:
-         # för långt namn: klipp av så det inte krockar med knapparna
-         title = title.subsurface(pygame.Rect(0, 0, 250, title.get_height()))
-      self.screen.blit(title, (panel.x + 26, panel.y + 18))
+      title = self.title_font.render(f"{name} vs {game.ai.name}", True, TEXT)
+      # rubriken har en egen rad. för långt namn: korta det med …
+      room = panel.width - 52
+      short = name
+      while title.get_width() > room and len(short) > 1:
+         short = short[:-1]
+         title = self.title_font.render(f"{short}… vs {game.ai.name}", True, TEXT)
+      self.screen.blit(title, title.get_rect(midleft=(panel.x + 26, panel.y + 36)))
 
       wins = game.scoreboard.wins(name)
       losses = game.scoreboard.losses(name)
       score = self.font.render(f"Aktuell poängställning: {wins} – {losses}", True, TEXT)
-      self.screen.blit(score, (panel.x + 28, panel.y + 62))
+      self.screen.blit(score, score.get_rect(midleft=(panel.x + 26, self.scores_button.rect.centery)))
 
       self.scores_button.draw(self.screen, self.button_font, True)
       self.restart_button.draw(self.screen, self.button_font, True)
@@ -950,8 +974,8 @@ class GraphicUI:
       name = self.bold_font.render(game.human.name, True, TEXT)
       count = self.font.render(f" ({len(self.hand_sprites)})", True, TEXT)
       x = TABLE_X - (name.get_width() + count.get_width()) // 2
-      self.screen.blit(name, (x, 748 - name.get_height() // 2))
-      self.screen.blit(count, (x + name.get_width(), 748 - count.get_height() // 2))
+      self.screen.blit(name, (x, 780 - name.get_height() // 2))
+      self.screen.blit(count, (x + name.get_width(), 780 - count.get_height() // 2))
 
       # leken
       label = self.font.render("Kortlek", True, TEXT)
@@ -1037,7 +1061,7 @@ class GraphicUI:
       self.screen.blit(self.layer, (0, 0))
 
    def draw_sprites(self):
-      # kort som flyger ritas sist så de syns ovanpå, och det valda kortet sist i handen
+      # ritar korten som ligger still. ger tillbaka korten som flyger, de ritas sist av draw()
       pile = []
       ai = []
       hand = []
@@ -1068,10 +1092,7 @@ class GraphicUI:
       self.draw_zone(ai, self.ai_alpha)
       for sprite in hand:
          sprite.draw(self.screen)
-      for sprite in moving:
-         sprite.draw(self.screen)
-      for sprite in self.leaving_sprites:
-         sprite.draw(self.screen)
+      return moving
 
    def draw_pile_extras(self):
       # frågetecknet på mittkortet, och "Syna kort" när musen är över det
@@ -1095,9 +1116,15 @@ class GraphicUI:
          mark = self.heading_font.render("?", True, WHITE)
          self.screen.blit(mark, mark.get_rect(center=(center[0], center[1] + 1)))
 
+   def buttons_visible(self):
+      # knapparna ligger ovanför handen. när ett kort är valt syns panelen där i stället
+      if self.state == "human":
+         return self.selected is None and self.no_popup()
+      return self.state == "ai_wait" or self.state == "ai_bluff_wait"
+
    def draw_buttons(self):
       game = self.game
-      my_turn = self.state == "human" and self.no_popup()
+      my_turn = self.state == "human"
       if my_turn and self.must_answer_last_card():
          self.pass_button.text = "Godta"
          self.pass_button.draw(self.screen, self.button_font, True)
@@ -1108,19 +1135,18 @@ class GraphicUI:
 
    def draw_hint(self):
       game = self.game
-      if self.must_answer_last_card():
+      color = TEXT
+      if self.state != "human":
+         text = f"{game.ai.name}s tur"
+         color = GRAY
+      elif self.must_answer_last_card():
          text = f"{game.ai.name} la sitt sista kort! Syna eller godta."
-         keys = "Klicka på mittkortet eller tryck B för att syna · Enter = godta"
       elif game.claim is None:
-         text = "Din tur – klicka på ett kort"
-         keys = "Tangenter: 1–9 väljer kort"
+         text = "Din tur – lägg valfritt kort"
       else:
          text = "Din tur – välj ett kort"
-         keys = "Klicka på leken = pass · på mittkortet = syna · Tangenter: 1–9, P, B"
-      label = self.bold_font.render(text, True, TEXT)
-      self.screen.blit(label, label.get_rect(center=(TABLE_X, 456)))
-      keys = self.small_font.render(keys, True, GRAY)
-      self.screen.blit(keys, keys.get_rect(center=(TABLE_X, 482)))
+      label = self.bold_font.render(text, True, color)
+      self.screen.blit(label, label.get_rect(center=(TABLE_X, 450)))
 
    def draw_thinking(self):
       # en pratbubbla till vänster om datorns hand
