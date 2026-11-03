@@ -1195,22 +1195,25 @@ class GraphicUI:
    def draw_claim_panel(self):
       items = self.panel_items()
       button = self.all_cards_rect()
-      panel = pygame.Rect(items[0][0].x - 16, 412, button.right - items[0][0].x + 32, 110)
+      panel = pygame.Rect(items[0][0].x - 16, items[0][0].y - 14, button.right - items[0][0].x + 32, MINI_H + 28)
       pygame.draw.rect(self.screen, WHITE, panel, border_radius=16)
       pygame.draw.rect(self.screen, LIGHT_GRAY, panel, 1, border_radius=16)
 
       honest_ok = self.game.is_valid_claim(self.selected.card)
 
-      # rubrik, eller felet om man har skrivit något som inte går
+      # ingen förklaring behövs. text bara när man skriver en kod eller något inte går
+      note = None
       if self.error_text != "":
-         heading = self.small_font.render(self.error_text, True, RED)
+         note = self.small_font.render(self.error_text, True, WHITE)
+         note_color = RED
       elif self.code_text != "":
-         heading = self.small_font.render(f"Du skriver: {self.code_text}   (Enter = säg det)", True, TEXT)
-      elif not honest_ok:
-         heading = self.small_font.render("Kortet passar inte här – välj vad du säger att det är", True, RED)
-      else:
-         heading = self.small_font.render("Vad säger du?  Grön = ärligt (klicka igen / Enter) · sen dina egna kort · Esc = ångra", True, GRAY)
-      self.screen.blit(heading, heading.get_rect(center=(panel.centerx, 425)))
+         note = self.small_font.render(f"Du skriver: {self.code_text}", True, WHITE)
+         note_color = DARK
+      if note is not None:
+         pill = pygame.Rect(0, 0, note.get_width() + 24, 26)
+         pill.midbottom = (panel.centerx, panel.y - 6)
+         pygame.draw.rect(self.screen, note_color, pill, border_radius=13)
+         self.screen.blit(note, note.get_rect(center=pill.center))
 
       mouse = pygame.mouse.get_pos()
       for i in range(len(items)):
