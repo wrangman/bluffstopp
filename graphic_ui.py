@@ -159,7 +159,6 @@ class GraphicUI:
       self.pile_sprites = []     # korten på bordet i den här sekvensen
       self.leaving_sprites = []  # kort som tonas bort
       self.pile_cards = []
-      self.next_delay = 0
 
       # hur hela händerna och leken syns just nu. glider mjukt som korten
       self.ai_alpha = 255
@@ -424,13 +423,17 @@ class GraphicUI:
       self.ai_sprites = self.keep_sprites(self.ai_sprites, game.ai.hand, free)
       self.pile_sprites = self.keep_sprites(self.pile_sprites, self.pile_cards, free)
 
-      self.next_delay = 0
+      # kort som kommer från leken samlas här, så de kan delas ut i rätt ordning
+      hand_dealt = []
+      ai_dealt = []
+      pile_dealt = []
       # dina kort delas ut i samma ordning som de syns, så de kommer och vänds från vänster till höger
-      new_cards = self.add_sprites(self.hand_sprites, sorted(game.human.hand, key=self.card_order), free)
+      new_cards = self.add_sprites(self.hand_sprites, sorted(game.human.hand, key=self.card_order), free, hand_dealt)
+      self.add_sprites(self.ai_sprites, game.ai.hand, free, ai_dealt)
+      added = self.add_sprites(self.pile_sprites, self.pile_cards, free, pile_dealt)
+      self.deal_order(hand_dealt, ai_dealt, pile_dealt)
       for sprite in new_cards:
          sprite.flip_wait = sprite.delay + 0.4  # alla hinner landa, sen vänds de i jämn takt
-      self.add_sprites(self.ai_sprites, game.ai.hand, free)
-      added = self.add_sprites(self.pile_sprites, self.pile_cards, free)
       for sprite in added:
          # kortet från leken ser alla, så det ligger med framsidan upp. lagda kort med baksidan upp
          sprite.open_on_table = game.last_player is None
@@ -455,8 +458,9 @@ class GraphicUI:
             free.append(sprite)
       return kept
 
-   def add_sprites(self, sprites, cards, free):
-      # lägger till kort som saknas på skärmen. ger tillbaka de nya
+   def add_sprites(self, sprites, cards, free, dealt):
+      # lägger till kort som saknas på skärmen. ger tillbaka de nya.
+      # kort som kommer från leken läggs också i dealt
       added = []
       for card in cards:
          found = False
@@ -475,11 +479,27 @@ class GraphicUI:
          else:
             sprite = CardSprite(card, DECK_X, DECK_Y)  # kortet kommer från leken
             sprite.scale = TABLE_SCALE
-            sprite.delay = self.next_delay
-            self.next_delay = self.next_delay + 0.09  # korten kommer ett i taget
+            dealt.append(sprite)
          sprites.append(sprite)
          added.append(sprite)
       return added
+
+   def deal_order(self, hand_dealt, ai_dealt, pile_dealt):
+      # korten kommer ett i taget, varannat till dig och varannat till datorn.
+      # sist kortet som vänds upp på bordet
+      delay = 0
+      i = 0
+      while i < len(hand_dealt) or i < len(ai_dealt):
+         if i < len(hand_dealt):
+            hand_dealt[i].delay = delay
+            delay = delay + 0.09
+         if i < len(ai_dealt):
+            ai_dealt[i].delay = delay
+            delay = delay + 0.09
+         i = i + 1
+      for sprite in pile_dealt:
+         sprite.delay = delay
+         delay = delay + 0.09
 
    def fade_away(self, sprite):
       # kortet lyfts lite och tonas bort där det är
@@ -1283,7 +1303,7 @@ class GraphicUI:
             show_mark = False
       if show_mark:
          center = (rect.right - 4, rect.y + 4)
-         pygame.draw.circle(self.screen, WHITE, center, 18)
+         pygame.draw.circle(self.screen, BACKGROUND, center, 18)  # ramen i samma färg som bordet
          pygame.draw.circle(self.screen, DARK, center, 16)
          mark = self.heading_font.render("?", True, WHITE)
          self.screen.blit(mark, mark.get_rect(center=(center[0], center[1] + 1)))
@@ -1316,7 +1336,7 @@ class GraphicUI:
       elif game.claim is None:
          text = "Din tur – lägg valfritt kort"
       else:
-         text = "Din tur – välj ett kort"
+         text = "Din tur – välj ett kort att spela"
       label = self.bold_font.render(text, True, color)
       self.screen.blit(label, label.get_rect(center=(TABLE_X, BUTTON_Y - 48)))
 
