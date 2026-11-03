@@ -1,9 +1,9 @@
 {
    "Spelare 1": {
-      "wins": 5,
+      "wins": 6,
       "losses": 4,
-      "streak": 1,
+      "streak": 2,
       "best_streak": 3,
-      "last_played": 1793697252
+      "last_played": 1793698000
    }
 }
