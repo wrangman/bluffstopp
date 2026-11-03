@@ -1,7 +1,7 @@
 import os
 import subprocess
 import time
-from card import Card, card_ranks
+from card import Card
 
 SHOW_AI_MEMORY = True  # felsökning: visa vad datorn kommer ihåg.
 SHOW_AI_HAND = True  # felsökning: visa datorns hand.
@@ -11,7 +11,6 @@ class TerminalUI:
    def __init__(self, game):
       self.game = game
       self.messages = []  # det senaste som hänt, visas under bordet
-      self.suit_codes = {"s": "♠", "h": "♥", "k": "♣", "r": "♦"}
       self.ai_hand_before = game.ai.hand[:]  # felsökning: datorns hand före hans senaste drag
       self.ai_played = None                   # felsökning: kortet han faktiskt la, None om han passade
 
@@ -130,28 +129,6 @@ class TerminalUI:
                line = line + f"{i + 1}. {self.colored(card)}" + spaces
          print(line)
 
-   def parse_code(self, code):
-      # "hk" -> Card("♥", "K"), "s10" -> Card("♠", 10)
-      code = code.strip().lower()
-      if len(code) < 2:
-         return None
-
-      letter = code[0]
-      rest = code[1:].upper()
-
-      if letter not in self.suit_codes:
-         return None
-
-      if rest.isdigit():
-         value = int(rest)
-      else:
-         value = rest
-
-      if value not in card_ranks:
-         return None
-
-      return Card(self.suit_codes[letter], value)
-
    def ai_call_bluff(self):
       # han funderar alltid en stund, så att väntan inte avslöjar om han säger bluffstopp
       print(f"{self.game.ai.name} funderar på ditt kort...")
@@ -227,7 +204,7 @@ class TerminalUI:
          if code.strip() == "":
             claimed_card = card  # inget skrivet = man säger det kort man faktiskt lägger
          else:
-            claimed_card = self.parse_code(code)
+            claimed_card = Card.from_code(code)  # samma tolkning som i grafikversionen
             if claimed_card is None:
                print("Förstår inte. Färg först (s, h, k, r) och sen valör (2-10, J, Q, K, A).")
                continue

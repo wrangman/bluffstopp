@@ -65,3 +65,18 @@ class Scoreboard:
    def best_streak(self, name):
       self.add_player(name)
       return self.scores[name]["best_streak"]
+
+   def top_list(self):
+      # alla spelare som [namn, vunna, förlorade, rekord], flest vinster först
+      rows = []
+      for name in self.scores:
+         self.add_player(name)
+         score = self.scores[name]
+         rows.append([name, score["wins"], score["losses"], score["best_streak"]])
+      rows.sort(key=Scoreboard.sort_key, reverse=True)
+      return rows
+
+   @staticmethod
+   def sort_key(row):
+      # vinster räknas först, vid lika vinner den med bäst rekord
+      return row[1] * 1000 + row[3]

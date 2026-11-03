@@ -5,10 +5,12 @@ Kortspelet Bluffstopp i terminalen: en människa mot en datorspelare. Skolprojek
 ## Köra
 
 ```
-python3 main.py
+pip install pygame-ce     # en gång, behövs bara för grafiken
+python3 main.py           # grafik (eller terminalen om pygame-ce saknas)
+python3 main.py terminal  # alltid terminalen
 ```
 
-Inga externa beroenden, bara standardbiblioteket. Det finns inga tester.
+`USE_GRAPHICS` högst upp i `main.py` väljer vad som startar som standard. Terminalversionen använder bara standardbiblioteket. Det finns inga tester.
 
 ## Testa
 
@@ -18,8 +20,8 @@ Inga externa beroenden, bara standardbiblioteket. Det finns inga tester.
 
 ## Filer
 
-- `main.py` – frågar efter namn, skapar `Game` och `TerminalUI`, startar spelet.
-- `card.py` – `Card` (färg + valör) och `card_ranks` (J=11, Q=12, K=13, A=14). `can_follow()` innehåller regeln för vilka kort som får läggas.
+- `main.py` – väljer grafik eller terminal och startar spelet. Terminalen frågar efter namn med `input`, grafiken i fönstret.
+- `card.py` – `Card` (färg + valör) och `card_ranks` (J=11, Q=12, K=13, A=14). `can_follow()` innehåller regeln för vilka kort som får läggas. `Card.from_code("hk")` tolkar koderna man skriver (används av båda gränssnitten).
 - `deck.py` – `Deck`. `make_deck()` och `shuffle_deck()` (egen Fisher–Yates) är statiska. `deal()` kastar fel om korten inte räcker, `draw()` tar så många som finns.
 - `player.py` – `Player` med handen och hjälpmetoder.
 - `ai_player.py` – `AIPlayer(Player)`.
@@ -31,6 +33,17 @@ Inga externa beroenden, bara standardbiblioteket. Det finns inga tester.
 - `game.py` – `Game`: all spellogik och allt tillstånd. Ingen `print` eller `input` här. `record_result()` ger vinnaren 1 poäng när omgången är slut och lämnar tillbaka en text om rekordet slogs. `score_text()` och `streak_text()` ger ställningen och vinstsviten som text.
 - `scoreboard.py` – `Scoreboard`: människans vunna och förlorade omgångar mot datorn, per namn, plus vinster i rad (`streak`) och rekordet (`best_streak`) att slå. Sparas i `scores.json` i spelmappen efter varje omgång. Datorns poäng är samma sak som människans förluster. Ingen `print` eller `input` här heller, så grafikversionen kan använda samma klass.
 - `terminal_ui.py` – `TerminalUI`: ritar bordet, läser in val och kör spelloopen (`run()`). `SHOW_AI_MEMORY` och `SHOW_AI_HAND` högst upp visar datorns minne och hand ovanför bordet för felsökning. Sätt dem till `False` när spelet är klart.
+- `graphic_ui.py` – `GraphicUI` (pygame-ce): fönster 1280×800 som går att skala. Turordningen i `next_step()` följer `TerminalUI.run()` exakt. Datorns väntan är en tidpunkt (`wait_until`), inte `time.sleep`, så fönstret fryser inte. Lägen i `self.state`: `name`, `human`, `ai_bluff_wait`, `ai_wait`, `reveal`, `round_over`.
+  - **Animationer:** `sync_sprites()` jämför korten på skärmen med `Game` efter varje drag. Kort som bytt plats flyger dit, nya kort kommer från leken och kort som försvunnit sopas ut till vänster. `Game` behöver inte veta något om animationer.
+  - **Handen:** solfjäder (`fan()`), sorterad efter färg och valör. Mellanrummet krymper med fler kort. Valt kort lyfts 40 px, kortet under musen 16 px.
+  - **Bluffpanel:** när ett kort är valt visas det riktiga kortet först (grön ram = ärligt), sedan förslag (`suggested_claims`) och knappen "Alla…" med alla 52 kort (otillåtna gråa). Man kan också skriva en kod som i terminalen. Klick på samma kort igen eller Enter = ärligt.
+  - **Layout (Johans design):** ingen egen titelrad, fönstrets rad räcker. Leken till vänster om mittkortet. Mittkortet ligger alltid med baksidan upp och rakt (lite huller om buller men aldrig snett), med "?" i hörnet och "Datorn sa: …" under. Till höger: poängrutan ("Johan vs Datorn", "Visa" = topplistan från `scores.json`, "Starta om") och händelserna.
+  - **Vems tur:** datorns hand blir större och tydlig på hans tur, mindre och genomskinlig på din (`AI_SCALE`, `ALPHA`). Din hand ändrar aldrig storlek eller genomskinlighet.
+  - **Klicka på bordet:** mittkortet = syna (bara på datorns kort), leken = pass. Musen över dem gör kortet större, tonar ned det och visar "Syna kort" / "Pass – dra kort" ovanför. Kortet som synas blir större när det vänds.
+  - **Händelser:** chevronen stänger listan så bara det senaste syns ("hard mode"). Öppen lista går att scrolla.
+  - `SHOW_AI_HAND` högst upp, eller F1 under spelet, visar datorns kort.
+- `card_sprite.py` – `CardSprite`: ett kort på skärmen. Glider mot sitt mål (`target_x` osv.) varje bild och vänds genom att tryckas ihop på bredden. Laddar bilderna en gång (`load_images()`).
+- `assets/cards/` – kortbilderna (public domain, från github.com/hayeah/playing-cards-assets, se `LICENSE.txt`). Baksidan ritas med kod i `CardSprite.make_back()`.
 
 ## Arkitektur
 
@@ -56,6 +69,12 @@ Inga externa beroenden, bara standardbiblioteket. Det finns inga tester.
 - **Straff:** dra 3 kort. Är leken slut tar man i stället 1 slumpat kort från motståndarens hand.
 - **Vinst:** den som blir av med alla kort vinner omgången. Det kollas först *efter* att motståndaren har fått chansen att säga bluffstopp på det sista kortet. Vinnaren börjar nästa omgång. Första omgången slumpas vem som börjar.
 
+## Inmatning i grafiken
+
+- Klicka på ett kort för att välja det, och klicka igen (eller Enter) för att lägga det ärligt. Bluffa genom att klicka i panelen, under "Alla…" eller genom att skriva en kod + Enter. Esc ångrar.
+- Tangenter när inget kort är valt: `1`–`9` väljer kort, `P` = pass, `B` = bluffstopp.
+- Lägger datorn sitt sista kort kan man bara välja Bluffstopp! eller Godta.
+
 ## Inmatning i terminalen
 
 - `1`–`n` = välj kort. Sedan Enter för att säga kortets riktiga namn, eller en kod för att bluffa: färgbokstav + valör, t.ex. `hk`, `s10`, `r2`.
@@ -69,7 +88,7 @@ Projektet är skrivet på en nivå som passar kursen. Följ samma stil:
 - Kommentarer och all text som visas är på **svenska**. Namn på variabler, metoder och klasser är på engelska.
 - Enkel och tydlig Python: vanliga `for`-loopar och `if`/`else`, inga list comprehensions, lambdas, dataclasses, type hints eller andra avancerade konstruktioner om användaren inte ber om det.
 - Korta kommentarer som förklarar *varför*, i samma ton som den befintliga koden.
-- Inga externa bibliotek.
+- Inga externa bibliotek, utom pygame-ce i grafikversionen (`graphic_ui.py`, `card_sprite.py`). Resten av spelet ska fungera utan det.
 - Färgerna på korten lagras som Unicode-symboler (`"♠"`, `"♥"`, `"♣"`, `"♦"`), och valören som `int` (2–10) eller `str` (`"J"`, `"Q"`, `"K"`, `"A"`). Jämför kort med `same_as()`, inte `==`.
 
 ## Att provspela (datorspelaren)

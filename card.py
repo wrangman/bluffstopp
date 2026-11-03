@@ -4,6 +4,9 @@ card_ranks = {
    8: 8, 9: 9, 10: 10, "J": 11, "Q": 12, "K": 13, "A": 14
 }
 
+# bokstäverna man skriver för färgerna, t.ex. "hk" = hjärter kung
+suit_codes = {"s": "♠", "h": "♥", "k": "♣", "r": "♦"}
+
 
 class Card:
    def __init__(self, suit, value):
@@ -44,3 +47,26 @@ class Card:
          return True  # samma valör, då byter man färg
 
       return False
+
+   @staticmethod
+   def from_code(code):
+      # "hk" -> Card("♥", "K"), "s10" -> Card("♠", 10). None om koden inte går att förstå
+      code = code.strip().lower()
+      if len(code) < 2:
+         return None
+
+      letter = code[0]
+      rest = code[1:].upper()
+
+      if letter not in suit_codes:
+         return None
+
+      if rest.isdigit():
+         value = int(rest)
+      else:
+         value = rest
+
+      if value not in card_ranks:
+         return None
+
+      return Card(suit_codes[letter], value)

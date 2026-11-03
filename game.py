@@ -68,6 +68,14 @@ class Game:
    def is_valid_claim(self, claimed_card):
       return claimed_card.can_follow(self.claim)
 
+   def allowed_claims(self):
+      # alla kort man får säga just nu. tomt bord = alla 52
+      allowed = []
+      for card in Deck.make_deck():
+         if card.can_follow(self.claim):
+            allowed.append(card)
+      return allowed
+
    def next_turn(self):
       self.current = self.opponent(self.current)
       self.bluff_called = False
