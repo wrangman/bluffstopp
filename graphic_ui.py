@@ -15,6 +15,7 @@ HEIGHT = 800
 # färger
 BACKGROUND = (241, 243, 244)
 WHITE = (255, 255, 255)
+PANEL = (248, 249, 250)  # poängen och händelserna: lite gråare än rutor som ligger ovanpå spelet
 TEXT = (30, 30, 34)
 GRAY = (125, 125, 132)
 LIGHT_GRAY = (205, 205, 210)
@@ -129,6 +130,7 @@ class GraphicUI:
       self.layer = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)  # för att tona ned en hel hand på en gång
       self.deck_images = {}
       self.mini_stack = None  # den lilla högen "Välj kort" i bluffpanelen
+      self.shadows = {}  # skuggor under rutorna ovanpå spelet, en per storlek
 
       self.font = pygame.font.SysFont(TEXT_FONTS, 16)
       self.symbol_font = pygame.font.SysFont(SYMBOL_FONTS, 16)
@@ -977,7 +979,7 @@ class GraphicUI:
       self.screen.blit(question, question.get_rect(center=(WIDTH // 2, 218)))
 
       box, rows = self.name_list_rects()
-      self.draw_panel(box)
+      self.draw_panel(box, WHITE)
       mouse = pygame.mouse.get_pos()
       for i in range(len(rows)):
          row = rows[i]
@@ -1035,14 +1037,14 @@ class GraphicUI:
       label = self.claim_font.render(text, True, TEXT)
       self.screen.blit(label, (box.x + 12, box.centery - label.get_height() // 2))
 
-   def draw_panel(self, rect):
-      pygame.draw.rect(self.screen, WHITE, rect, border_radius=22)
+   def draw_panel(self, rect, color):
+      pygame.draw.rect(self.screen, color, rect, border_radius=22)
       pygame.draw.rect(self.screen, BORDER, rect, 1, border_radius=22)
 
    def draw_score_panel(self):
       game = self.game
       panel = pygame.Rect(RIGHT_X, 24, RIGHT_W, SCORE_H)
-      self.draw_panel(panel)
+      self.draw_panel(panel, PANEL)
 
       name = game.human.name
       title = self.title_font.render(f"{name} vs {game.ai.name}", True, TEXT)
@@ -1082,7 +1084,7 @@ class GraphicUI:
 
    def draw_log_panel(self):
       panel = self.log_rect()
-      self.draw_panel(panel)
+      self.draw_panel(panel, PANEL)
 
       header = self.log_header_rect()
       heading = self.small_font.render("HÄNDELSER", True, GRAY)
@@ -1341,7 +1343,8 @@ class GraphicUI:
       self.screen.blit(label, label.get_rect(center=(TABLE_X, BUTTON_Y - 48)))
 
    def draw_thinking(self):
-      # en pratbubbla till vänster om datorns hand
+      # en tankebubbla till höger om datorns namn. där står den still och kommer
+      # inte nära korten, hur stor handen än är
       if self.state == "ai_bluff_wait":
          text = "Funderar på ditt kort"
       else:
@@ -1350,11 +1353,20 @@ class GraphicUI:
       label = self.small_font.render(text + "." * dots, True, TEXT)
       full = self.small_font.render(text + "...", True, TEXT)  # bubblan ändrar inte storlek med prickarna
       bubble = pygame.Rect(0, 0, full.get_width() + 36, 36)
-      bubble.midright = (TABLE_X - 215, AI_HAND_Y)
+      # namnet och "(10 kort kvar)" står centrerade under handen. bubblan börjar efter
+      # den bredaste av dem, och mitt emellan raderna i höjd
+      name_w = self.bold_font.size(self.game.ai.name)[0]
+      count_w = self.small_font.size("(10 kort kvar)")[0]
+      left = TABLE_X + max(name_w, count_w) // 2 + 32
+      bubble.midleft = (left, 171)
+      self.draw_shadow(bubble, 18)
       pygame.draw.rect(self.screen, WHITE, bubble, border_radius=18)
       pygame.draw.rect(self.screen, LIGHT_GRAY, bubble, 1, border_radius=18)
-      tip = [(bubble.right - 2, bubble.centery - 7), (bubble.right - 2, bubble.centery + 7), (bubble.right + 12, bubble.centery)]
-      pygame.draw.polygon(self.screen, WHITE, tip)
+      # två små ringar mot namnet i stället för en spets: han tänker, han säger inget
+      rings = [(bubble.left - 8, bubble.centery + 4, 5), (bubble.left - 20, bubble.centery + 8, 3)]
+      for ring in rings:
+         pygame.draw.circle(self.screen, WHITE, (ring[0], ring[1]), ring[2])
+         pygame.draw.circle(self.screen, LIGHT_GRAY, (ring[0], ring[1]), ring[2], 1)
       self.screen.blit(label, (bubble.x + 18, bubble.centery - label.get_height() // 2))
 
    def panel_items(self):
@@ -1388,6 +1400,7 @@ class GraphicUI:
       items = self.panel_items()
       button = self.all_cards_rect()
       panel = pygame.Rect(items[0][0].x - 16, items[0][0].y - 14, button.right - items[0][0].x + 32, MINI_H + 28)
+      self.draw_shadow(panel, 16)
       pygame.draw.rect(self.screen, WHITE, panel, border_radius=16)
       pygame.draw.rect(self.screen, LIGHT_GRAY, panel, 1, border_radius=16)
 
@@ -1464,6 +1477,7 @@ class GraphicUI:
    def draw_grid(self):
       self.shade_screen()
       box = self.grid_rect()
+      self.draw_shadow(box, 20)
       pygame.draw.rect(self.screen, WHITE, box, border_radius=20)
       title = self.bold_font.render("Välj vad du säger att kortet är", True, TEXT)
       self.screen.blit(title, title.get_rect(center=(box.centerx, box.y + 32)))
@@ -1494,6 +1508,7 @@ class GraphicUI:
       card_bottom = PILE_Y + int(CARD_H * 1.3) // 2
       box = pygame.Rect(0, 0, 620, 110)
       box.midtop = (TABLE_X, card_bottom - 40)
+      self.draw_shadow(box, 18)
       pygame.draw.rect(self.screen, WHITE, box, border_radius=18)
       pygame.draw.rect(self.screen, color, box, 3, border_radius=18)
       title = self.big_font.render(self.reveal_title, True, color)
@@ -1508,6 +1523,7 @@ class GraphicUI:
       game = self.game
       box = pygame.Rect(0, 0, 520, 300)
       box.center = (WIDTH // 2, 420)
+      self.draw_shadow(box, 22)
       pygame.draw.rect(self.screen, WHITE, box, border_radius=22)
 
       if self.round_winner == game.human:
@@ -1535,6 +1551,7 @@ class GraphicUI:
       shown = rows[:12]
       box = pygame.Rect(0, 0, 560, 150 + len(shown) * 30)
       box.center = (WIDTH // 2, HEIGHT // 2)
+      self.draw_shadow(box, 22)
       pygame.draw.rect(self.screen, WHITE, box, border_radius=22)
 
       title = self.heading_font.render("Topplista", True, TEXT)
@@ -1582,6 +1599,21 @@ class GraphicUI:
       cover = pygame.Surface((MINI_W, MINI_H), pygame.SRCALPHA)
       pygame.draw.rect(cover, (241, 243, 244, 185), cover.get_rect(), border_radius=6)
       self.screen.blit(cover, (x, y))
+
+   def draw_shadow(self, rect, radius):
+      # mjuk skugga under rutor som ligger ovanpå spelet. ritas som lager från den
+      # största (svagast) till den minsta (starkast), så kanten tonar ut.
+      # sparas per storlek så det inte görs varje bild
+      spread = 7
+      key = (rect.width, rect.height, radius)
+      if key not in self.shadows:
+         shadow = pygame.Surface((rect.width + spread * 2, rect.height + spread * 2), pygame.SRCALPHA)
+         for i in range(spread):
+            layer = pygame.Rect(i, i, shadow.get_width() - i * 2, shadow.get_height() - i * 2)
+            pygame.draw.rect(shadow, (0, 0, 0, (i + 1) * 2), layer, border_radius=radius + spread - i)
+         self.shadows[key] = shadow
+      # lite nedåt, som att ljuset kommer ovanifrån
+      self.screen.blit(self.shadows[key], (rect.x - spread, rect.y - spread + 3))
 
    def shade_screen(self):
       shade = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
