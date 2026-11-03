@@ -10,6 +10,12 @@ python3 main.py
 
 Inga externa beroenden, bara standardbiblioteket. Det finns inga tester.
 
+## Testa
+
+- **Kör inga tester eller simuleringar (t.ex. skripten i `sim/`) innan användaren själv har provspelat.** Bottarna spelar inte som en människa och missar regelbrott och buggar som syns direkt när man spelar. De slösar bara användarens usage.
+- Användaren provspelar själv med `python3 main.py`. Efter en ändring: berätta vad som ändrats och vad man ska titta efter, och vänta på hur det kändes.
+- Säg aldrig att något fungerar för att en simulering gick bra.
+
 ## Filer
 
 - `main.py` – frågar efter namn, skapar `Game` och `TerminalUI`, startar spelet.
@@ -22,7 +28,8 @@ Inga externa beroenden, bara standardbiblioteket. Det finns inga tester.
   - **Bluffar:** samma valör i en annan färg, eller samma färg 1–5 steg upp. På tomt bord kan han säga vilket högre kort som helst ("lägg lågt, säg högt"). Han får säga kort han själv har eller som redan spelats, för det är spelarens sak att komma ihåg. I risken räknar han med chansen att motståndaren *vet* att det är bluff (`opponent_knows`): 0 för hans egna kort, 0,2 för spelade kort och annars chansen att kortet ligger på motståndarens hand. Därför säger han gärna sina egna höga kort. Att slänga ett högt kort, ett kort som passar eller ett kort i en serie som bluff kostar poäng (`waste_value`), så han bluffar nästan alltid med låga, ensamma kort.
   - **Väntetid:** `think_time` slumpas *innan* draget. Efter lång väntan (> 2,0 s) är han nervösare (`nerves`) och bluffar mer sällan, utom med 1–2 kort kvar.
   - **Bluffstopp (`wants_to_call_bluff`):** säkra regler först, sedan sannolikheter.
-- `game.py` – `Game`: all spellogik och allt tillstånd. Ingen `print` eller `input` här.
+- `game.py` – `Game`: all spellogik och allt tillstånd. Ingen `print` eller `input` här. `record_result()` ger vinnaren 1 poäng när omgången är slut och lämnar tillbaka en text om rekordet slogs. `score_text()` och `streak_text()` ger ställningen och vinstsviten som text.
+- `scoreboard.py` – `Scoreboard`: människans vunna och förlorade omgångar mot datorn, per namn, plus vinster i rad (`streak`) och rekordet (`best_streak`) att slå. Sparas i `scores.json` i spelmappen efter varje omgång. Datorns poäng är samma sak som människans förluster. Ingen `print` eller `input` här heller, så grafikversionen kan använda samma klass.
 - `terminal_ui.py` – `TerminalUI`: ritar bordet, läser in val och kör spelloopen (`run()`). `SHOW_AI_MEMORY` och `SHOW_AI_HAND` högst upp visar datorns minne och hand ovanför bordet för felsökning. Sätt dem till `False` när spelet är klart.
 
 ## Arkitektur

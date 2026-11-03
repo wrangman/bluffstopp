@@ -36,6 +36,7 @@ class TerminalUI:
       self.clear()
 
       print("========== BLUFFSTOPP ==========")
+      print(game.score_text())
       if game.ai.cards_left() == 0:
          ai_text = "inga kort kvar"
       else:
@@ -260,12 +261,17 @@ class TerminalUI:
       # visar vem som vann. ger tillbaka True om man vill spela en omgång till
       game = self.game
       winner = game.winner()
+      record = game.record_result()  # poängen räknas innan bordet ritas, så ställningen högst upp stämmer
       self.show_table()
 
       if winner == game.human:
          print("Du vann omgången!")
       else:
          print(f"{game.ai.name} vann omgången!")
+      print(game.score_text())
+      print(game.streak_text())
+      if record is not None:
+         print(record)
       print()
 
       choice = input("Enter = ny omgång   q/a = avsluta\n> ").strip().lower()

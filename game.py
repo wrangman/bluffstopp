@@ -2,12 +2,14 @@ import random
 from deck import Deck
 from player import Player
 from ai_player import AIPlayer
+from scoreboard import Scoreboard
 
 
 class Game:
    def __init__(self, player_name):
       self.human = Player(player_name)
       self.ai = AIPlayer("Datorn")
+      self.scoreboard = Scoreboard()  # vunna och förlorade omgångar, sparas i en fil
 
       self.new_round(None)  # första omgången: slumpa vem som börjar
 
@@ -180,3 +182,27 @@ class Game:
       if self.ai.cards_left() == 0:
          return self.ai
       return None
+
+   def record_result(self):
+      # anropas en gång när omgången är slut: vinnaren får 1 poäng och filen sparas
+      # ger tillbaka text om rekordet slogs, annars None
+      name = self.human.name
+      text = None
+      if self.winner() == self.human:
+         if self.scoreboard.add_win(name):
+            text = f"Nytt rekord: {self.scoreboard.best_streak(name)} vinster i rad!"
+      else:
+         self.scoreboard.add_loss(name)
+      self.scoreboard.save()
+      return text
+
+   def score_text(self):
+      # datorns poäng är samma sak som dina förluster
+      name = self.human.name
+      wins = self.scoreboard.wins(name)
+      losses = self.scoreboard.losses(name)
+      return f"Ställning: {name} {wins} – {self.ai.name} {losses}"
+
+   def streak_text(self):
+      name = self.human.name
+      return f"Vinster i rad: {self.scoreboard.streak(name)}   Rekord: {self.scoreboard.best_streak(name)}"
