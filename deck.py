@@ -13,8 +13,12 @@ class Deck:
       if num_cards > len(self.cards):
          raise ValueError("Not enough cards left to deal")
 
+      before = len(self.cards)
       dealt_cards = self.cards[:num_cards]
       self.cards = self.cards[num_cards:]  # Remove dealt cards from the deck
+
+      # felsökning: all dragning går genom den här raden, så siffrorna är de riktiga
+      print(f"[Kortlek] {before} - {len(dealt_cards)} = {len(self.cards)} kort kvar")
 
       return dealt_cards
 
