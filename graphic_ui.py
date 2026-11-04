@@ -11,6 +11,7 @@ SHOW_AI_HAND = False  # felsökning: visa datorns kort. F1 slår av och på unde
 
 WIDTH = 1280
 HEIGHT = 800
+MAX_DT = 1 / 30  # längsta tid en bild får flytta korten, i sekunder
 
 # färger
 BACKGROUND = (241, 243, 244)
@@ -21,6 +22,8 @@ GRAY = (125, 125, 132)
 LIGHT_GRAY = (205, 205, 210)
 BORDER = (226, 226, 230)
 RED = (222, 52, 52)
+RED_HOVER = (238, 74, 74)
+RED_PRESSED = (186, 36, 36)
 GREEN = (36, 150, 80)
 DARK = (28, 30, 34)
 
@@ -39,6 +42,8 @@ MINI_W = 52       # små kort i panelen där man väljer vad man säger
 MINI_H = 76
 SCORE_H = 146         # poängrutan uppe till höger
 SCORE_BUTTON_Y = 132  # knapparna under ställningen
+SMALL_PADDING = 14    # luft på var sida om texten i de små knapparna
+CLICK_SLOP = 12       # så många px får musen röra sig under ett klick
 LOG_BOTTOM = 776
 LOG_OPEN_TOP = 24 + SCORE_H + 16
 
@@ -64,31 +69,55 @@ value_order = [2, 3, 4, 5, 6, 7, 8, 9, 10, "J", "Q", "K", "A"]
 
 
 class Button:
+   press_pos = None  # var musknappen trycktes ned, gäller alla knappar. None = inte nedtryckt
+
    def __init__(self, text, x, y, width, height, style):
       self.text = text
       self.rect = pygame.Rect(0, 0, width, height)
       self.rect.center = (x, y)
-      self.style = style  # "primary" (röd), "secondary" (vit) eller "small" (liten grå)
+      self.style = style  # "primary" (röd), "secondary" (bara ram) eller "small" (bara text)
 
    def contains(self, pos):
       return self.rect.collidepoint(pos)
 
+   @staticmethod
+   def is_click(pos):
+      # drar man iväg musen medan knappen är nedtryckt räknas det inte som ett klick
+      if Button.press_pos is None:
+         return False
+      dx = abs(pos[0] - Button.press_pos[0])
+      dy = abs(pos[1] - Button.press_pos[1])
+      return dx <= CLICK_SLOP and dy <= CLICK_SLOP
+
    def draw(self, screen, font, enabled):
-      hover = enabled and self.contains(pygame.mouse.get_pos())
+      mouse = pygame.mouse.get_pos()
+      hover = enabled and self.contains(mouse)
+      active = hover and Button.is_click(mouse) and self.contains(Button.press_pos)
       rect = self.rect.copy()
       radius = rect.height // 2
-      if hover:
-         rect.y = rect.y - 2  # knappen lyfts lite under musen
+      # knappen lyfts lite under musen och trycks ned vid klick. den lilla ligger still
+      if self.style != "small":
+         if active:
+            rect.y = rect.y + 2
+         elif hover:
+            rect.y = rect.y - 2
 
+      # small och secondary har ingen bakgrund förrän musen är över dem
       if self.style == "small":
-         if hover:
+         if active:
+            pygame.draw.rect(screen, (208, 210, 216), rect, border_radius=radius)
+         elif hover:
             pygame.draw.rect(screen, (226, 228, 232), rect, border_radius=radius)
-         else:
-            pygame.draw.rect(screen, BACKGROUND, rect, border_radius=radius)
          color = TEXT
+      elif not enabled and self.style == "secondary":
+         pygame.draw.rect(screen, BORDER, rect, 2, border_radius=radius)
+         color = (172, 172, 178)
       elif not enabled:
          pygame.draw.rect(screen, (232, 233, 236), rect, border_radius=radius)
          color = (172, 172, 178)
+      elif self.style == "secondary" and not hover:
+         pygame.draw.rect(screen, RED, rect, 2, border_radius=radius)
+         color = DARK
       else:
          # skuggan stannar kvar när knappen lyfts, så det ser ut som att den kommer upp mot musen
          # under en vit knapp syns skuggan mycket mer än under den röda, så den görs svagare där
@@ -97,23 +126,26 @@ class Button:
             shadow_alpha = 30
          else:
             shadow_alpha = 12
-         if hover:
+         if hover and not active:
             shadow_alpha = shadow_alpha + 20
          pygame.draw.rect(shadow, (0, 0, 0, shadow_alpha), shadow.get_rect(), border_radius=radius)
          screen.blit(shadow, (self.rect.x, self.rect.y + 3))
 
          if self.style == "primary":
-            if hover:
-               pygame.draw.rect(screen, (238, 74, 74), rect, border_radius=radius)
+            if active:
+               pygame.draw.rect(screen, RED_PRESSED, rect, border_radius=radius)
+            elif hover:
+               pygame.draw.rect(screen, RED_HOVER, rect, border_radius=radius)
             else:
                pygame.draw.rect(screen, RED, rect, border_radius=radius)
             color = WHITE
+         elif active:
+            pygame.draw.rect(screen, (252, 228, 228), rect, border_radius=radius)
+            pygame.draw.rect(screen, RED_PRESSED, rect, 2, border_radius=radius)
+            color = DARK
          else:
             pygame.draw.rect(screen, WHITE, rect, border_radius=radius)
-            if hover:
-               pygame.draw.rect(screen, DARK, rect, 2, border_radius=radius)
-            else:
-               pygame.draw.rect(screen, LIGHT_GRAY, rect, 2, border_radius=radius)
+            pygame.draw.rect(screen, RED_HOVER, rect, 2, border_radius=radius)
             color = DARK
 
       label = font.render(self.text, True, color)
@@ -192,21 +224,30 @@ class GraphicUI:
 
       self.pass_button = Button("Pass", TABLE_X - 85, BUTTON_Y, 150, 44, "secondary")
       self.bluff_button = Button("Bluffstopp!", TABLE_X + 85, BUTTON_Y, 150, 44, "primary")
-      # i poängrutan, på en rad under ställningen. börjar med samma luft till vänster som texten
-      x = RIGHT_X + 26
-      self.scores_button = Button("Visa", x + 28, SCORE_BUTTON_Y, 56, 34, "small")
-      x = x + 56 + 6
-      self.restart_button = Button("Starta om", x + 46, SCORE_BUTTON_Y, 92, 34, "small")
-      x = x + 92 + 6
-      self.switch_button = Button("Byt användare", x + 64, SCORE_BUTTON_Y, 128, 34, "small")
+      # i poängrutan, på en rad under ställningen. paddingen sticker ut till vänster,
+      # så att själva texten börjar i linje med raderna ovanför
+      x = RIGHT_X + 26 - SMALL_PADDING
+      self.scores_button = self.make_small_button("Visa", x)
+      x = self.scores_button.rect.right + 4
+      self.restart_button = self.make_small_button("Starta om", x)
+      x = self.restart_button.rect.right + 4
+      self.switch_button = self.make_small_button("Byt användare", x)
       self.start_button = Button("Spela", WIDTH // 2, 470, 160, 46, "primary")
       self.place_start_button()
       self.again_button = Button("Ny omgång", WIDTH // 2 - 90, 500, 160, 44, "primary")
       self.end_button = Button("Avsluta", WIDTH // 2 + 90, 500, 160, 44, "secondary")
 
+   def make_small_button(self, text, left):
+      # bredden räknas från texten, så att paddingen blir lika stor på alla knappar
+      width = self.button_font.size(text)[0] + 2 * SMALL_PADDING
+      return Button(text, left + width // 2, SCORE_BUTTON_Y, width, 34, "small")
+
    def run(self):
       while self.running:
          dt = self.clock.tick(60) / 1000
+         # tar en bild lång tid (datorn räknar på sitt drag) ska korten inte hoppa fram
+         if dt > MAX_DT:
+            dt = MAX_DT
          for event in pygame.event.get():
             self.handle_event(event)
          self.update(dt)
@@ -224,7 +265,7 @@ class GraphicUI:
          if name == "":
             name = "Spelare 1"
       self.game = Game(name)
-      self.add_message(f"Spelomgången börjar. {self.game.current.name} börjar.")
+      self.add_message(f"Spelomgången börjar. {self.game.current.name} går först.")
       self.add_message(self.game.start_message)
       self.new_deal()
 
@@ -374,7 +415,7 @@ class GraphicUI:
       # ny omgång direkt. den räknas inte i ställningen
       self.game.new_round(None)
       self.messages = []
-      self.add_message(f"Omstart! {self.game.current.name} börjar.")
+      self.add_message(f"Omstart! {self.game.current.name} går först.")
       self.add_message(self.game.start_message)
       self.new_deal()
 
@@ -685,7 +726,12 @@ class GraphicUI:
       elif event.type == pygame.KEYDOWN:
          self.handle_key(event)
       elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-         self.handle_click(event.pos)
+         Button.press_pos = event.pos
+      elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+         # klicket räknas när knappen släpps, annars hinner man inte se att den trycks ned
+         if Button.is_click(event.pos):
+            self.handle_click(event.pos)
+         Button.press_pos = None
       elif event.type == pygame.MOUSEWHEEL:
          # scrolla bland händelserna, bara när listan är öppen
          if self.game is not None and self.log_open and self.log_rect().collidepoint(pygame.mouse.get_pos()):
