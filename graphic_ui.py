@@ -52,6 +52,11 @@ RECENT_COUNT = 5     # så många av de senaste spelarna syns
 LIST_TOP = 250
 LIST_W = 420
 LIST_ROW_H = 58
+LIST_ROW_GAP = 6     # mellanrum mellan raderna
+LIST_PADDING = 16    # luft mellan panelens kant och raderna
+LIST_INSET = 7       # luft mellan radens kant och brickan eller namnrutan
+LIST_BUTTON_H = 30   # de små ikonknapparna i varje rad
+ICON_SIZE = 18
 
 # datorns hand: större och tydligare när det är hans tur. din hand ändras aldrig
 TABLE_SCALE = 0.9
@@ -76,6 +81,7 @@ class Button:
       self.rect = pygame.Rect(0, 0, width, height)
       self.rect.center = (x, y)
       self.style = style  # "primary" (röd), "secondary" (bara ram) eller "small" (bara text)
+      self.icon = None    # en bild som ritas i stället för texten
 
    def contains(self, pos):
       return self.rect.collidepoint(pos)
@@ -148,6 +154,9 @@ class Button:
             pygame.draw.rect(screen, RED_HOVER, rect, 2, border_radius=radius)
             color = DARK
 
+      if self.icon is not None:
+         screen.blit(self.icon, self.icon.get_rect(center=rect.center))
+         return
       label = font.render(self.text, True, color)
       screen.blit(label, label.get_rect(center=rect.center))
 
@@ -163,6 +172,8 @@ class GraphicUI:
       self.deck_images = {}
       self.mini_stack = None  # den lilla högen "Välj kort" i bluffpanelen
       self.shadows = {}  # skuggor under rutorna ovanpå spelet, en per storlek
+      self.reset_icon = self.make_reset_icon()
+      self.remove_icon = self.make_remove_icon()
 
       self.font = pygame.font.SysFont(TEXT_FONTS, 16)
       self.symbol_font = pygame.font.SysFont(SYMBOL_FONTS, 16)
@@ -185,6 +196,9 @@ class GraphicUI:
       self.scoreboard = Scoreboard()
       self.players = self.scoreboard.recent_players(RECENT_COUNT)
       self.choice = 0
+      # rutan som frågar innan en spelare ändras: "remove", "reset" eller None = ingen ruta
+      self.confirm_action = None
+      self.confirm_name = ""
       self.messages = []   # [text, ord i svart, ord i grått]
 
       # korten på skärmen
@@ -236,11 +250,46 @@ class GraphicUI:
       self.place_start_button()
       self.again_button = Button("Ny omgång", WIDTH // 2 - 90, 500, 160, 44, "primary")
       self.end_button = Button("Avsluta", WIDTH // 2 + 90, 500, 160, 44, "secondary")
+      # texten på den röda knappen sätts när rutan öppnas
+      self.confirm_button = Button("", WIDTH // 2 - 90, 478, 160, 44, "primary")
+      self.cancel_button = Button("Avbryt", WIDTH // 2 + 90, 478, 160, 44, "secondary")
 
    def make_small_button(self, text, left):
       # bredden räknas från texten, så att paddingen blir lika stor på alla knappar
       width = self.button_font.size(text)[0] + 2 * SMALL_PADDING
       return Button(text, left + width // 2, SCORE_BUTTON_Y, width, 34, "small")
+
+   def make_row_button(self, icon, right, y):
+      button = Button("", right - LIST_BUTTON_H // 2, y, LIST_BUTTON_H, LIST_BUTTON_H, "small")
+      button.icon = icon
+      return button
+
+   def make_icon_canvas(self):
+      # ikonerna ritas fyra gånger för stora och skalas ned, så kanterna blir mjuka.
+      # den genomskinliga bakgrunden har textens färg, annars blir kanterna smutsiga
+      canvas = pygame.Surface((ICON_SIZE * 4, ICON_SIZE * 4), pygame.SRCALPHA)
+      canvas.fill((TEXT[0], TEXT[1], TEXT[2], 0))
+      return canvas
+
+   def make_reset_icon(self):
+      # en cirkel med en pil som pekar medurs
+      canvas = self.make_icon_canvas()
+      pygame.draw.circle(canvas, TEXT, (36, 39), 25, 6)
+      # luckan uppe till höger. att rita med alfa 0 suddar det som redan finns där
+      gap = [(36, 39), (36, 0), (72, 0), (72, 18)]
+      pygame.draw.polygon(canvas, (TEXT[0], TEXT[1], TEXT[2], 0), gap)
+      pygame.draw.polygon(canvas, TEXT, [(36, 4), (36, 30), (54, 17)])
+      return pygame.transform.smoothscale(canvas, (ICON_SIZE, ICON_SIZE))
+
+   def make_remove_icon(self):
+      # en papperskorg: handtag, lock och korg med två ränder
+      canvas = self.make_icon_canvas()
+      pygame.draw.rect(canvas, TEXT, (27, 7, 18, 12), 5, border_radius=3)
+      pygame.draw.rect(canvas, TEXT, (11, 15, 50, 6))
+      pygame.draw.rect(canvas, TEXT, (17, 21, 38, 45), 5, border_top_left_radius=0, border_top_right_radius=0, border_bottom_left_radius=7, border_bottom_right_radius=7)
+      pygame.draw.rect(canvas, TEXT, (28, 31, 5, 24))
+      pygame.draw.rect(canvas, TEXT, (39, 31, 5, 24))
+      return pygame.transform.smoothscale(canvas, (ICON_SIZE, ICON_SIZE))
 
    def run(self):
       while self.running:
@@ -449,6 +498,25 @@ class GraphicUI:
          self.start_button.rect.centery = box.bottom + 52
       else:
          self.start_button.rect.centery = 470
+
+   def ask_confirm(self, action, name):
+      self.confirm_action = action
+      self.confirm_name = name
+      if action == "remove":
+         self.confirm_button.text = "Ta bort"
+      else:
+         self.confirm_button.text = "Starta om"
+
+   def do_confirm(self):
+      if self.confirm_action == "remove":
+         self.scoreboard.remove_player(self.confirm_name)
+         # listan ändras: en äldre spelare kan komma tillbaka, eller så är den tom nu
+         self.players = self.scoreboard.recent_players(RECENT_COUNT)
+         self.choice = 0
+         self.place_start_button()
+      else:
+         self.scoreboard.reset_player(self.confirm_name)
+      self.confirm_action = None
 
    # ---------- korten på skärmen ----------
 
@@ -741,6 +809,13 @@ class GraphicUI:
       enter = event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER
 
       if self.state == "name":
+         if self.confirm_action is not None:
+            # rutan är öppen: inget annat på skärmen får ta emot tangenter
+            if enter:
+               self.do_confirm()
+            elif event.key == pygame.K_ESCAPE:
+               self.confirm_action = None
+            return
          if enter:
             self.start_game()
          elif event.key == pygame.K_UP:
@@ -810,11 +885,27 @@ class GraphicUI:
 
    def handle_click(self, pos):
       if self.state == "name":
+         if self.confirm_action is not None:
+            # klick utanför rutan är samma sak som Avbryt
+            if self.confirm_button.contains(pos):
+               self.do_confirm()
+            elif self.cancel_button.contains(pos) or not self.confirm_box().collidepoint(pos):
+               self.confirm_action = None
+            return
          if self.start_button.contains(pos):
             self.start_game()
             return
          if len(self.players) > 0:
             box, rows = self.name_list_rects()
+            # knapparna ligger ovanpå raden, så de kollas först
+            for i in range(len(self.players)):
+               reset, remove = self.row_buttons(rows[i])
+               if reset.contains(pos):
+                  self.ask_confirm("reset", self.players[i])
+                  return
+               if remove.contains(pos):
+                  self.ask_confirm("remove", self.players[i])
+                  return
             for i in range(len(rows)):
                if rows[i].collidepoint(pos):
                   if i == self.choice and i < len(self.players):
@@ -1009,13 +1100,27 @@ class GraphicUI:
    def name_list_rects(self):
       # panelen med listan, och en ruta per rad. "Ny spelare" är sista raden
       count = len(self.players) + 1
-      box = pygame.Rect(0, 0, LIST_W, count * LIST_ROW_H + 32)
+      # sista raden har inget mellanrum under sig, så luften blir lika stor runt om
+      height = count * LIST_ROW_H - LIST_ROW_GAP + LIST_PADDING * 2
+      box = pygame.Rect(0, 0, LIST_W, height)
       box.midtop = (WIDTH // 2, LIST_TOP)
       rows = []
       for i in range(count):
-         y = box.y + 16 + i * LIST_ROW_H
-         rows.append(pygame.Rect(box.x + 16, y, box.width - 32, LIST_ROW_H - 6))
+         y = box.y + LIST_PADDING + i * LIST_ROW_H
+         rows.append(pygame.Rect(box.x + LIST_PADDING, y, box.width - LIST_PADDING * 2, LIST_ROW_H - LIST_ROW_GAP))
       return box, rows
+
+   def row_buttons(self, row):
+      # längst till höger i raden, med lika mycket luft till höger som uppe och nere
+      inset = (row.height - LIST_BUTTON_H) // 2
+      remove = self.make_row_button(self.remove_icon, row.right - inset, row.centery)
+      reset = self.make_row_button(self.reset_icon, remove.rect.left - 2, row.centery)
+      return reset, remove
+
+   def confirm_box(self):
+      box = pygame.Rect(0, 0, 480, 260)
+      box.center = (WIDTH // 2, HEIGHT // 2)
+      return box
 
    def draw_player_list(self):
       # som rutan för namnet, fast man väljer bland de som spelat senast
@@ -1025,42 +1130,76 @@ class GraphicUI:
       self.screen.blit(question, question.get_rect(center=(WIDTH // 2, 218)))
 
       box, rows = self.name_list_rects()
-      self.draw_panel(box, WHITE)
+      # panelens hörn ska följa radernas: yttre radien = inre radien + luften emellan
+      self.draw_panel(box, WHITE, rows[0].height // 2 + LIST_PADDING)
       mouse = pygame.mouse.get_pos()
+      # är rutan öppen ska inget under den reagera på musen
+      enabled = self.confirm_action is None
       for i in range(len(rows)):
          row = rows[i]
          radius = row.height // 2
-         # vald rad får mörk ram som en knapp under musen, raden under musen blir grå
-         if row.collidepoint(mouse) and i != self.choice:
+         # vald rad får röd ram som "Spela", raden under musen blir grå
+         if enabled and row.collidepoint(mouse) and i != self.choice:
             pygame.draw.rect(self.screen, BACKGROUND, row, border_radius=radius)
          if i == self.choice:
-            pygame.draw.rect(self.screen, DARK, row, 2, border_radius=radius)
+            pygame.draw.rect(self.screen, RED, row, 2, border_radius=radius)
 
          # en rund bricka med första bokstaven, eller + för en ny spelare
-         center = (row.x + 30, row.centery)
-         pygame.draw.circle(self.screen, BACKGROUND, center, 19)
-         pygame.draw.circle(self.screen, BORDER, center, 19, 1)
+         # brickan ligger mitt i radens rundning, så luften runt den är lika stor
+         center = (row.x + radius, row.centery)
+         pygame.draw.circle(self.screen, BACKGROUND, center, radius - LIST_INSET)
+         pygame.draw.circle(self.screen, BORDER, center, radius - LIST_INSET, 1)
          if i < len(self.players):
             letter = self.title_font.render(self.players[i][0].upper(), True, TEXT)
          else:
             letter = self.title_font.render("+", True, GRAY)
          self.screen.blit(letter, letter.get_rect(center=center))
 
-         x = row.x + 62
+         x = row.x + 58
          if i < len(self.players):
-            self.draw_player_row(row, x, self.players[i])
+            self.draw_player_row(row, x, self.players[i], enabled)
          else:
             self.draw_new_player_row(row, x, i == self.choice)
 
-      self.start_button.draw(self.screen, self.button_font, True)
+      self.start_button.draw(self.screen, self.button_font, enabled)
+      if not enabled:
+         self.draw_confirm()
 
-   def draw_player_row(self, row, x, name):
+   def draw_player_row(self, row, x, name, enabled):
       label = self.bold_font.render(name, True, TEXT)
       self.screen.blit(label, (x, row.y + 7))
       wins = self.scoreboard.wins(name)
       losses = self.scoreboard.losses(name)
       info = self.small_font.render(f"{wins} vunna, {losses} förlorade", True, GRAY)
       self.screen.blit(info, (x, row.y + 29))
+      reset, remove = self.row_buttons(row)
+      reset.draw(self.screen, self.small_font, enabled)
+      remove.draw(self.screen, self.small_font, enabled)
+
+   def draw_confirm(self):
+      # frågar först, för det går inte att ångra
+      self.shade_screen()
+      box = self.confirm_box()
+      self.draw_shadow(box, 22)
+      pygame.draw.rect(self.screen, WHITE, box, border_radius=22)
+
+      if self.confirm_action == "remove":
+         heading = "Ta bort spelaren?"
+         text = "Spelaren och alla resultat försvinner."
+      else:
+         heading = "Starta om spelaren?"
+         text = "Vunna, förlorade och rekord nollställs."
+      title = self.heading_font.render(heading, True, TEXT)
+      self.screen.blit(title, title.get_rect(center=(box.centerx, box.y + 44)))
+      name = self.bold_font.render(self.confirm_name, True, TEXT)
+      self.screen.blit(name, name.get_rect(center=(box.centerx, box.y + 88)))
+      info = self.font.render(text, True, TEXT)
+      self.screen.blit(info, info.get_rect(center=(box.centerx, box.y + 120)))
+      warning = self.font.render("Det går inte att ångra.", True, GRAY)
+      self.screen.blit(warning, warning.get_rect(center=(box.centerx, box.y + 146)))
+
+      self.confirm_button.draw(self.screen, self.button_font, True)
+      self.cancel_button.draw(self.screen, self.button_font, True)
 
    def draw_new_player_row(self, row, x, chosen):
       if not chosen:
@@ -1069,9 +1208,12 @@ class GraphicUI:
          return
 
       # vald: raden blir samma ruta för namnet som när ingen har spelat än
-      box = pygame.Rect(x - 6, row.y + 7, row.right - 14 - x, row.height - 14)
-      pygame.draw.rect(self.screen, WHITE, box, border_radius=10)
-      pygame.draw.rect(self.screen, LIGHT_GRAY, box, 2, border_radius=10)
+      # lika mycket luft uppe, nere och till höger, och hörnen följer radens
+      left = x - 6
+      box = pygame.Rect(left, row.y + LIST_INSET, row.right - LIST_INSET - left, row.height - LIST_INSET * 2)
+      radius = box.height // 2
+      pygame.draw.rect(self.screen, WHITE, box, border_radius=radius)
+      pygame.draw.rect(self.screen, LIGHT_GRAY, box, 2, border_radius=radius)
       blink = int(time.time() * 2) % 2 == 0
       if self.name_text == "" and not blink:
          hint = self.font.render("Skriv ditt namn", True, LIGHT_GRAY)
@@ -1083,9 +1225,9 @@ class GraphicUI:
       label = self.claim_font.render(text, True, TEXT)
       self.screen.blit(label, (box.x + 12, box.centery - label.get_height() // 2))
 
-   def draw_panel(self, rect, color):
-      pygame.draw.rect(self.screen, color, rect, border_radius=22)
-      pygame.draw.rect(self.screen, BORDER, rect, 1, border_radius=22)
+   def draw_panel(self, rect, color, radius=22):
+      pygame.draw.rect(self.screen, color, rect, border_radius=radius)
+      pygame.draw.rect(self.screen, BORDER, rect, 1, border_radius=radius)
 
    def draw_score_panel(self):
       game = self.game

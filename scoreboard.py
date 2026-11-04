@@ -54,6 +54,18 @@ class Scoreboard:
       self.scores[name]["losses"] = self.scores[name]["losses"] + 1
       self.scores[name]["streak"] = 0  # förlust = vinstsviten är bruten
 
+   def remove_player(self, name):
+      if name in self.scores:
+         del self.scores[name]
+         self.save()
+
+   def reset_player(self, name):
+      # last_played får vara kvar, så spelaren står kvar på samma plats i listan
+      self.add_player(name)
+      for key in ["wins", "losses", "streak", "best_streak"]:
+         self.scores[name][key] = 0
+      self.save()
+
    def wins(self, name):
       self.add_player(name)
       return self.scores[name]["wins"]
